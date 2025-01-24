@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+      "target": "ES2019",
+      "module": "none",
+      "isolatedModules": true,
+      "noResolve": true,
+      "experimentalDecorators": true
+    },
+    "include": [
+      "*.ts"
+    ]
+  }

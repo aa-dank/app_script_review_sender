@@ -1,4 +1,6 @@
 
+const url = 'https://docs.google.com/spreadsheets/d/1'
+
 function getIdFromUrl(url) {
   return url.match(/[-\w]{25,}/)[0];
 }

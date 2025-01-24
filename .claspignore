@@ -1,4 +1,11 @@
-node_modules/
 .git/
+.git/**
 .vscode/
+.vscode/**
 .gitignore
+
+
+node_modules/**
+node_modules/**/.*
+node_modules/**/.*/**
+// https://github.com/google/clasp/issues/67

@@ -1,6 +1,21 @@
 {
+  "name": "app_script_review_sender",
+  "version": "1.0.0",
+  "description": "Email distribution system for review document management",
+  "main": "Code.js",
+  "scripts": {
+    "build": "tsc && node ./node_modules/ts2gas/bin/ts2gas src/ -o dist/",
+    "push": "npm run build && clasp push"
+  },
   "devDependencies": {
-    "@types/google-apps-script": "^1.0.86",
-    "typescript": "^5.7.2"
-  }
+    "@types/google-apps-script": "^1.0.91",
+    "typescript": "^5.7.2",
+    "ts2gas": "^4.2.0"
+  },
+  "dependencies": {
+    "type-fest": "^2.19.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

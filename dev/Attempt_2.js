@@ -1,10 +1,19 @@
 // Configuration constants
 const FROM_EMAIL = 'constdoc@gmail.com'; // Requires "Send As" permission
 const DEFAULT_SUBJECT = 'Your Subject Here'; // Customize as needed
+const SPREADSHEET_ID = 'your-spreadsheet-id'; // Replace with your actual spreadsheet ID
+const EMAILS_TO_SEND_SHEETNAME = 'distributions_to_send'; // Name of the sheet with emails to send
+const SENT_HISTORY_SHEETNAME = 'sent_history'; // Name of the sheet to move processed emails
 
+
+/**
+ * Main function that processes the spreadsheet and sends emails based on the data.
+ * Reads from 'distributions_to_send' sheet and moves processed rows to 'sent_history'.
+ */
 function sendEmails() {
-    var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    var sourceSheet = spreadsheet.getSheetByName('distributions_to_send');
+    var spreadsheetId = SPREADSHEET_ID; // Replace with your actual spreadsheet ID
+    var spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    var sourceSheet = spreadsheet.getSheetByName(EMAILS_TO_SEND_SHEETNAME);
     var dataRange = sourceSheet.getDataRange();
     var data = dataRange.getValues();
     var headers = data[0];
@@ -14,9 +23,9 @@ function sendEmails() {
     }
   
     // Get or create the 'sent_history' sheet
-    var historySheet = spreadsheet.getSheetByName('sent_history');
+    var historySheet = spreadsheet.getSheetByName(SENT_HISTORY_SHEETNAME);
     if (!historySheet) {
-      historySheet = spreadsheet.insertSheet('sent_history');
+      historySheet = spreadsheet.insertSheet(SENT_HISTORY_SHEETNAME);
       // Optionally, set up the headers in 'sent_history' sheet
       var historyHeaders = headers.slice(); // Copy headers
       historyHeaders.push('datetime'); // Add 'datetime' column
@@ -68,8 +77,19 @@ function sendEmails() {
     }
   }
 
+/**
+ * Processes a single email sending operation.
+ * @param {string} distributionEmail - Primary recipient email address(es)
+ * @param {string} additionalEmails - Additional recipient email address(es)
+ * @param {string} revuSessionInvite - Revu session invite text containing session ID
+ * @param {string} templateValues - JSON string of template values
+ * @param {string} emailTemplateUrl - Google Drive URL of the email template
+ * @param {string} files - Comma-separated list of file URLs to attach
+ * @param {string} subject - Email subject line
+ * @returns {boolean} - True if email was sent successfully, false otherwise
+ */
 function processEmail(distributionEmail, additionalEmails, revuSessionInvite, templateValues, emailTemplateUrl, files, subject) {
-    var recipientEmails = parseEmails(distributionEmail, additionalEmails);
+    var recipientEmails = compileEmailAddresses(distributionEmail, additionalEmails);
     if (!recipientEmails) {
         Logger.log('No valid recipient emails found.');
         return false;
@@ -85,15 +105,21 @@ function processEmail(distributionEmail, additionalEmails, revuSessionInvite, te
     return sendEmail(recipientEmails, emailBody, attachments, subject);
     }
 
-function parseEmails(distributionEmail, additionalEmails) {
+/**
+ * Combines and validates email addresses from distribution and additional emails.
+ * @param {string} distributionEmail - Primary recipient email address(es)
+ * @param {string} additionalEmails - Additional recipient email address(es)
+ * @returns {string|null} - Comma-separated list of unique email addresses or null if none valid
+ */
+function compileEmailAddresses(distributionEmail, additionalEmails) {
   var emails = [];
 
   if (distributionEmail) {
-    emails = emails.concat(getEmailAddresses(distributionEmail));
+    emails = emails.concat(getEmailAddressesFromString(distributionEmail));
   }
 
   if (additionalEmails) {
-    emails = emails.concat(getEmailAddresses(additionalEmails));
+    emails = emails.concat(getEmailAddressesFromString(additionalEmails));
   }
 
   // Remove duplicates and empty strings
@@ -104,7 +130,12 @@ function parseEmails(distributionEmail, additionalEmails) {
   return emails.length > 0 ? emails.join(',') : null;
 }
 
-function getEmailAddresses(s) {
+/**
+ * Extracts email addresses from a string, including handling 'at' and 'dot' notation.
+ * @param {string} s - String containing email addresses
+ * @returns {string[]} - Array of extracted email addresses
+ */
+function getEmailAddressesFromString(s) {
   // Remove lines that start with '//' to avoid matching URLs
   s = s.replace(/^\/\/.*/gm, '');
 
@@ -127,6 +158,11 @@ function getEmailAddresses(s) {
   return matches;
 }
 
+/**
+ * Extracts the session ID from the given text using regex patterns.
+ * @param {string} text - Text containing the session ID
+ * @returns {string|null} - Extracted session ID or null if not found
+ */
 function parseSessionId(text) {
   if (!text) {
     Logger.log("No revu_session_invite text provided.");
@@ -164,6 +200,13 @@ function parseSessionId(text) {
   return idsInText.length > 0 ? idsInText[0] : null;
 }
 
+/**
+ * Generates the email body by applying template values to the HTML template.
+ * @param {string} emailTemplateUrl - Google Drive URL of the email template
+ * @param {string} templateValues - JSON string of template values
+ * @param {string} revuSessionInvite - Revu session invite text containing session ID
+ * @returns {string|null} - Generated HTML email body or null if error occurs
+ */
 function getEmailBody(emailTemplateUrl, templateValues, revuSessionInvite) {
   try {
     var fileId = getFileIdFromUrl(emailTemplateUrl);
@@ -194,7 +237,18 @@ function getEmailBody(emailTemplateUrl, templateValues, revuSessionInvite) {
     return null;
   }
 }
-
+/*
+  * Extracts the file ID from a Google Drive URL.
+  * @param {string} url The Google Drive URL.
+  * @return {string} The file ID.
+  * @throws {Error} If the URL is invalid.
+*/
+/**
+ * Extracts file ID from a Google Drive URL.
+ * @param {string} url - Google Drive URL
+ * @returns {string} - Extracted file ID
+ * @throws {Error} If the URL is invalid or file ID cannot be extracted
+ */
 function getFileIdFromUrl(url) {
   var idMatch = url.match(/[-\w]{25,}/);
   if (idMatch && idMatch[0]) {
@@ -204,6 +258,11 @@ function getFileIdFromUrl(url) {
   }
 }
 
+/**
+ * Retrieves file attachments from Google Drive URLs.
+ * @param {string} filesString - Comma-separated list of Google Drive URLs
+ * @returns {Blob[]} - Array of file blobs to attach to the email
+ */
 function getAttachments(filesString) {
   var attachments = [];
   if (filesString) {
@@ -223,6 +282,14 @@ function getAttachments(filesString) {
   return attachments;
 }
 
+/**
+ * Sends an email using Gmail service.
+ * @param {string} recipientEmails - Comma-separated list of recipient email addresses
+ * @param {string} emailBody - HTML content of the email
+ * @param {Blob[]} attachments - Array of file attachments
+ * @param {string} subject - Email subject line
+ * @returns {boolean} - True if email was sent successfully, false otherwise
+ */
 function sendEmail(recipientEmails, emailBody, attachments, subject) {
     try {
       var options = {
@@ -239,6 +306,13 @@ function sendEmail(recipientEmails, emailBody, attachments, subject) {
     }
   }
 
+/**
+ * Moves a processed row from source sheet to history sheet and adds timestamp.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sourceSheet - Source spreadsheet sheet
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} historySheet - History spreadsheet sheet
+ * @param {number} rowIndex - Index of the row to move
+ * @param {Array} rowData - Data from the row being moved
+ */
 function moveRowToSentHistory(sourceSheet, historySheet, rowIndex, rowData) {
     // Prepare the data to append, adding the timestamp
     var timestamp = new Date();
