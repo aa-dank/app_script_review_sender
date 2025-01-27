@@ -51,13 +51,15 @@ interface EmailRow {
   /** Bluebeam Revu session invite text containing session ID */
   revu_session_invite: string;
   /** JSON string containing template variable values */
-  template_values: string;
+  body_template_values: string;
   /** Google Drive URL of the email template HTML file */
-  email_template: string;
+  email_body_template: string;
   /** Comma-separated list of Google Drive URLs for attachments */
   files: string;
   /** Custom subject line for the email */
   email_subject: string;
+  email_subject_template: string;
+  subject_template_values: string;
   /** Allow for additional dynamic columns */
   [key: string]: string; // Allow additional columns
 }
@@ -148,10 +150,12 @@ class EmailProcessor {
       distribution_email: row[headers['distribution_email']] || '',
       additional_emails: row[headers['additional_emails']] || '',
       revu_session_invite: row[headers['revu_session_invite']] || '',
-      template_values: row[headers['template_values']] || '',
-      email_template: row[headers['email_template']] || '',
+      body_template_values: row[headers['body_template_values']] || '',
+      email_body_template: row[headers['email_body_template']] || '',
       files: row[headers['files']] || '',
-      email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT
+      email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT,
+      email_subject_template: row[headers['email_subject_template']] || '',
+      subject_template_values: row[headers['subject_template_values']] || ''
     };
   }
 
@@ -169,7 +173,7 @@ class EmailProcessor {
       Logger.log('No recipient email addresses provided.');
       return false;
     }
-    if (!row.email_template) {
+    if (!row.email_body_template) {
       Logger.log('No email template URL provided.');
       return false;
     }
@@ -202,8 +206,26 @@ class EmailBuilder {
     if (!emailBody) return false;
 
     const attachments = await this.getAttachments();
-    
-    return this.sendEmailViaGmail(recipients, emailBody, attachments);
+    const subject = this.getFinalSubject();
+
+    return this.sendEmailViaGmail(recipients, emailBody, attachments, subject);
+  }
+
+  private getFinalSubject(): string {
+    if (this.row.email_subject_template) {
+      try {
+        const templateValues = this.row.subject_template_values
+          ? JSON.parse(this.row.subject_template_values)
+          : {};
+        const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
+        Object.assign(subjectTemplate, templateValues);
+        return subjectTemplate.evaluate().getContent().trim() || CONFIG.DEFAULT_SUBJECT;
+      } catch (error) {
+        Logger.log(`Error building subject from template: ${error.message}`);
+      }
+    }
+    // Return existing row subject or fallback to DEFAULT_SUBJECT
+    return this.row.email_subject || CONFIG.DEFAULT_SUBJECT;
   }
 
   /**
@@ -269,14 +291,14 @@ class EmailBuilder {
   }
 
   private async getTemplateContent(): Promise<string> {
-    const fileId = this.extractFileId(this.row.email_template);
+    const fileId = this.extractFileId(this.row.email_body_template);
     const templateFile = DriveApp.getFileById(fileId);
     return templateFile.getBlob().getDataAsString();
   }
 
   private getTemplateValues(): TemplateValues {
-    const values: TemplateValues = this.row.template_values ? 
-      JSON.parse(this.row.template_values) : {};
+    const values: TemplateValues = this.row.body_template_values ? 
+      JSON.parse(this.row.body_template_values) : {};
 
     const sessionId = this.parseSessionId(this.row.revu_session_invite);
     if (sessionId) {
@@ -349,16 +371,18 @@ class EmailBuilder {
    * @param {string} recipients - Comma-separated list of recipient email addresses
    * @param {string} htmlBody - HTML content of the email
    * @param {GoogleAppsScript.Base.Blob[]} attachments - Array of file attachments
+   * @param {string} subject - Subject of the email
    * @returns {boolean} True if email was sent successfully
    * @private
    */
   private sendEmailViaGmail(
     recipients: string, 
     htmlBody: string, 
-    attachments: GoogleAppsScript.Base.Blob[]
+    attachments: GoogleAppsScript.Base.Blob[],
+    subject: string
   ): boolean {
     try {
-      GmailApp.sendEmail(recipients, this.row.email_subject, '', {
+      GmailApp.sendEmail(recipients, subject, '', {
         htmlBody,
         attachments,
         from: CONFIG.FROM_EMAIL

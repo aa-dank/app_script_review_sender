@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Plan_review_invite</title>
+</head>
+<body>
+<h2>PPDO Document Review</h2>
+<p>Please accept this email as a request for review for <i>Project <%= project_number %>
+<% if (project_name) { %>, <%= project_name %><% } %></i>
+on behalf of the University<% if (pm) { %> project manager, <%= pm %><% } %>. 
+If possible, please leave your comments in the below Bluebeam Studio Session. 
+If you do not have Bluebeam, please complete your review in either FileMaker or on the attached reviewer_comments spreadsheet.</p>
+
+<h3>&#160;</h3>
+<h3>Review Completion Date</h3>
+<p>Please have your comments available by the end of the day on <%= review_end %></p>
+<p>&#160;</p>
+
+<h3>Bluebeam Session</h3>
+<p>Session URL: <a href="https://studio.bluebeam.com/hyperlink.html?link=studio.bluebeam.com/sessions/<%= sessionId %>">
+https://studio.bluebeam.com/hyperlink.html?link=studio.bluebeam.com/sessions/<%= sessionId %></a></p>
+<p>&#160;</p>
+
+<% if (download_url) { %>
+<h3>Download Link</h3>
+<p>Download files here: <a href="<%= download_url %>"><%= download_url %></a></p>
+<p>&#160;</p>
+<% } %>
+
+<% if (reviewer_notes) { %>
+<h3>&#160;</h3>
+<h3>Notes for Reviewers</h3>
+<p><%= reviewer_notes %></p>
+<% } %>
+
+<% if (recharge_number) { %>
+<h3>Recharge</h3>
+<p>Time can be recharged to <%= recharge_number %></p>
+<p>&#160;</p>
+<% } %>
+
+<p>Thank you,<br />
+<em>UCSC Construction Documents</em><br />
+<em>1156 High Street, Barn G</em><br />
+<em>Physical Planning Development &amp; Operations</em><br />
+<em>University of California, Santa Cruz</em><br />
+<em>constdoc@ucsc.edu</em><br />
+<em>(831) 459-5326</em></p>
+</body>
+</html>
