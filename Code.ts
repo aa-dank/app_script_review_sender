@@ -132,8 +132,7 @@ class EmailProcessor {
           this.moveRowToHistory(i + 1, data[i]);
         }
       } catch (error) {
-        Logger.log(`Error processing row ${i + 1}: ${error.message}`);
-        console.error(`Error processing row ${i + 1}`, error);
+        CustomLogger.error(`Error processing row ${i + 1}`, error);
       }
     }
   }
@@ -170,11 +169,11 @@ class EmailProcessor {
 
   private validateRow(row: EmailRow): boolean {
     if (!row.distribution_email && !row.additional_emails) {
-      Logger.log('No recipient email addresses provided.');
+      CustomLogger.debug('No recipient email addresses provided.');
       return false;
     }
     if (!row.email_body_template) {
-      Logger.log('No email template URL provided.');
+      CustomLogger.debug('No email template URL provided.');
       return false;
     }
     return true;
@@ -221,7 +220,7 @@ class EmailBuilder {
         Object.assign(subjectTemplate, templateValues);
         return subjectTemplate.evaluate().getContent().trim() || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
-        Logger.log(`Error building subject from template: ${error.message}`);
+        CustomLogger.error('Error building subject from template', error);
       }
     }
     // Return existing row subject or fallback to DEFAULT_SUBJECT
@@ -285,7 +284,7 @@ class EmailBuilder {
       
       return htmlTemplate.evaluate().getContent();
     } catch (error) {
-      Logger.log(`Error building email body: ${error.message}`);
+      CustomLogger.error('Error building email body', error);
       return null;
     }
   }
@@ -323,12 +322,12 @@ class EmailBuilder {
     const ids = matches.map(m => m.match(/\d{3}-\d{3}-\d{3}/)?.[0]).filter(Boolean);
     
     if (ids.length === 0) {
-      Logger.log("WARNING: No Bluebeam Session ID found.");
+      CustomLogger.debug("WARNING: No Bluebeam Session ID found.");
       return null;
     }
 
     if (new Set(ids).size > 1) {
-      Logger.log("WARNING: Multiple different session IDs found. Using first match.");
+      CustomLogger.debug("WARNING: Multiple different session IDs found. Using first match.");
     }
 
     return ids[0] || null;
@@ -351,7 +350,7 @@ class EmailBuilder {
         const file = DriveApp.getFileById(fileId);
         attachments.push(file.getBlob());
       } catch (error) {
-        Logger.log(`Error attaching file from URL ${url}: ${error.message}`);
+        CustomLogger.error(`Error attaching file from URL ${url}`, error);
       }
     }
 
@@ -389,7 +388,7 @@ class EmailBuilder {
       });
       return true;
     } catch (error) {
-      Logger.log(`Error sending email: ${error.message}`);
+      CustomLogger.error('Error sending email', error);
       return false;
     }
   }
@@ -398,21 +397,21 @@ class EmailBuilder {
 /**
  * Enhanced logging utility
  */
-class Logger {
+class CustomLogger {
   static debug(message: string, data?: any) {
-    if (CONFIG.DEBUG_MODE) {
-      console.log(`[DEBUG] ${message}`, data ? JSON.stringify(data) : '');
-    }
+      if (CONFIG.DEBUG_MODE) {
+          Logger.log(`[DEBUG] ${message} ${data ? JSON.stringify(data) : ''}`);
+      }
   }
 
   static error(message: string, error: any) {
-    console.error(`[ERROR] ${message}`);
-    console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      toString: error.toString()
-    });
+      Logger.log(`[ERROR] ${message}`);
+      Logger.log('Error details:' + JSON.stringify({
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+          toString: error.toString()
+      }));
   }
 }
 
@@ -420,14 +419,15 @@ class Logger {
  * Main entrypoint function that can be called from Apps Script console.
  * This function processes all pending email distributions in the spreadsheet.
  */
-function processEmailDistributions() {
-  const processor = new EmailProcessor();
-  processor.sendEmails()
-    .then(() => Logger.log('Email distribution processing completed.'))
-    .catch(error => {
-      Logger.log('Error processing email distributions:');
-      Logger.log(error);
-    });
+async function processEmailDistributions(): Promise<void> {
+  try {
+      CustomLogger.debug('Doin it.')  
+      const processor = new EmailProcessor();
+      await processor.sendEmails();
+      CustomLogger.debug('Email distribution processing completed.');
+  } catch (error) {
+      CustomLogger.error('Error processing email distributions.', error);
+  }
 }
 
 // Add this if you want to create a custom menu in the spreadsheet
@@ -445,7 +445,7 @@ function onOpen() {
  */
 function getSpreadsheet() {
   try {
-    Logger.debug('Attempting to access spreadsheet', {
+    CustomLogger.debug('Attempting to access spreadsheet', {
       spreadsheetId: CONFIG.SPREADSHEET_ID
     });
 
@@ -460,11 +460,11 @@ function getSpreadsheet() {
       throw new Error('Could not open spreadsheet - null response');
     }
 
-    Logger.debug('Successfully accessed spreadsheet');
+    CustomLogger.debug('Successfully accessed spreadsheet');
     return spreadsheet;
 
   } catch (error) {
-    Logger.error('Spreadsheet access failed', error);
+    CustomLogger.error('Spreadsheet access failed', error);
     throw new Error(`Spreadsheet access error: ${error.message || error}`);
   }
 }
@@ -472,31 +472,31 @@ function getSpreadsheet() {
 // Add this test function to verify access
 function testSpreadsheetAccess() {
   try {
-    Logger.debug('Starting spreadsheet access test');
+    CustomLogger.debug('Starting spreadsheet access test');
     
     // Check if SpreadsheetApp is available
-    Logger.debug('Checking SpreadsheetApp availability', {
+    CustomLogger.debug('Checking SpreadsheetApp availability', {
       hasSpreadsheetApp: typeof SpreadsheetApp !== 'undefined'
     });
 
     const spreadsheet = getSpreadsheet();
-    Logger.debug('Spreadsheet accessed successfully', {
+    CustomLogger.debug('Spreadsheet accessed successfully', {
       name: spreadsheet.getName(),
       url: spreadsheet.getUrl()
     });
 
   } catch (error) {
-    Logger.error('Access test failed', error);
+    CustomLogger.error('Access test failed', error);
   }
 }
 
 function testSpreadsheetPermissions() {
-  Logger.debug('=== Starting Permission Tests ===');
+  CustomLogger.debug('=== Starting Permission Tests ===');
   
   try {
     // Test 1: Basic SpreadsheetApp access
     const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-    Logger.debug('Active spreadsheet test:', {
+    CustomLogger.debug('Active spreadsheet test:', {
       name: activeSpreadsheet.getName(),
       id: activeSpreadsheet.getId()
     });
@@ -504,19 +504,19 @@ function testSpreadsheetPermissions() {
     // Test 2: Create temporary test spreadsheet
     const testSheet = SpreadsheetApp.create('Test Sheet');
     const testId = testSheet.getId();
-    Logger.debug('Created test spreadsheet:', { id: testId });
+    CustomLogger.debug('Created test spreadsheet:', { id: testId });
     
     // Test 3: Open by ID
     const openedSheet = SpreadsheetApp.openById(testId);
-    Logger.debug('Opened test spreadsheet by ID');
+    CustomLogger.debug('Opened test spreadsheet by ID');
     
     // Cleanup
     DriveApp.getFileById(testId).setTrashed(true);
-    Logger.debug('Test spreadsheet deleted');
+    CustomLogger.debug('Test spreadsheet deleted');
     
     return true;
   } catch (error) {
-    Logger.error('Permission test failed at step:', error);
+    CustomLogger.error('Permission test failed at step:', error);
     return false;
   }
 }
@@ -525,7 +525,7 @@ function testSpreadsheetPermissions() {
  * Verify services are enabled
  */
 function checkServices() {
-  Logger.debug('=== Checking Services ===');
+  CustomLogger.debug('=== Checking Services ===');
   
   try {
     const services = {
@@ -533,10 +533,10 @@ function checkServices() {
       drive: typeof DriveApp !== 'undefined'
     };
     
-    Logger.debug('Service availability:', services);
+    CustomLogger.debug('Service availability:', services);
     return services;
   } catch (error) {
-    Logger.error('Service check failed:', error);
+    CustomLogger.error('Service check failed:', error);
     return false;
   }
 }
