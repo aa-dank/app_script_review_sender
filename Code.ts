@@ -32,7 +32,7 @@ interface Config {
 }
 
 const CONFIG: Config = {
-  FROM_EMAIL: 'constdoc@gmail.com',
+  FROM_EMAIL: 'constdoc@ucsc.edu',
   DEFAULT_SUBJECT: 'Your Subject Here',
   SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY',
   DEBUG_MODE: true
@@ -59,7 +59,7 @@ interface EmailRow {
   /** Custom subject line for the email */
   email_subject: string;
   email_subject_template: string;
-  subject_template_values: string;
+  subject_template_value: string;
   /** Allow for additional dynamic columns */
   [key: string]: string; // Allow additional columns
 }
@@ -154,7 +154,7 @@ class EmailProcessor {
       files: row[headers['files']] || '',
       email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT,
       email_subject_template: row[headers['email_subject_template']] || '',
-      subject_template_values: row[headers['subject_template_values']] || ''
+      subject_template_value: row[headers['subject_template_value']] || ''
     };
   }
 
@@ -213,17 +213,17 @@ class EmailBuilder {
   private getFinalSubject(): string {
     if (this.row.email_subject_template) {
       try {
-        const templateValues = this.row.subject_template_values
-          ? JSON.parse(this.row.subject_template_values)
-          : {};
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
-        Object.assign(subjectTemplate, templateValues);
-        return subjectTemplate.evaluate().getContent().trim() || CONFIG.DEFAULT_SUBJECT;
+        if (this.row.subject_template_value) {
+          subjectTemplate.subject_template_value = this.row.subject_template_value;
+        }
+        const processedSubject = subjectTemplate.evaluate().getContent().trim();
+        return processedSubject || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
         CustomLogger.error('Error building subject from template', error);
+        return CONFIG.DEFAULT_SUBJECT;
       }
     }
-    // Return existing row subject or fallback to DEFAULT_SUBJECT
     return this.row.email_subject || CONFIG.DEFAULT_SUBJECT;
   }
 
@@ -322,12 +322,14 @@ class EmailBuilder {
     const ids = matches.map(m => m.match(/\d{3}-\d{3}-\d{3}/)?.[0]).filter(Boolean);
     
     if (ids.length === 0) {
-      CustomLogger.debug("WARNING: No Bluebeam Session ID found.");
+      const NoBluebeamSessionID = 'No Bluebeam Session ID found in the text: ${text}';
+      CustomLogger.debug(NoBluebeamSessionID);
       return null;
     }
 
     if (new Set(ids).size > 1) {
-      CustomLogger.debug("WARNING: Multiple different session IDs found. Using first match.");
+      const multipleSessionIDs = 'Multiple different session IDs found in the text: ${text}\n Using first match.';
+      CustomLogger.debug(multipleSessionIDs);
     }
 
     return ids[0] || null;
