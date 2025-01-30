@@ -1,51 +1,106 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Plan_review_invite</title>
+  <base target="_top">
+  <style type="text/css">
+    /* Reset styles for email clients */
+    body {
+      margin: 0;
+      padding: 0;
+      min-width: 100%;
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333333;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      border-bottom: 2px solid #005587;
+      padding-bottom: 15px;
+      margin-bottom: 25px;
+    }
+    .ucsc-logo {
+      height: 50px;
+    }
+    .content-section {
+      margin-bottom: 25px;
+    }
+    .button {
+      background-color: #005587;
+      color: white !important;
+      padding: 12px 25px;
+      text-decoration: none;
+      border-radius: 4px;
+      display: inline-block;
+      margin: 10px 0;
+    }
+    .footer {
+      border-top: 1px solid #eeeeee;
+      padding-top: 20px;
+      margin-top: 30px;
+      font-size: 0.9em;
+      color: #666666;
+    }
+  </style>
 </head>
 <body>
-<h2>PPDO Document Review</h2>
-<p>Please accept this email as a request for review for <i>Project <%= project_number %>
-<% if (project_name) { %>, <%= project_name %><% } %></i>
-on behalf of the University<% if (pm) { %> project manager, <%= pm %><% } %>. 
-If possible, please leave your comments in the below Bluebeam Studio Session. 
-If you do not have Bluebeam, please complete your review in either FileMaker or on the attached reviewer_comments spreadsheet.</p>
+  <div class="container">
+    <div class="header">
+      <img src="https://www.ucsc.edu/images/logo-ucsc.png" alt="UCSC Logo" class="ucsc-logo">
+    </div>
 
-<h3>&#160;</h3>
-<h3>Review Completion Date</h3>
-<p>Please have your comments available by the end of the day on <%= review_end %></p>
-<p>&#160;</p>
+    <div class="content-section">
+      <p>Please accept this email as a formal request for review of:</p>
+      
+      <h2 style="color: #005587; margin: 15px 0;">
+        Project <?= project_number ?>
+        <? if (project_name) { ?>
+          <br><span style="font-size: 0.9em;">- <?= project_name ?></span>
+        <? } ?>
+      </h2>
+    </div>
 
-<h3>Bluebeam Session</h3>
-<p>Session URL: <a href="https://studio.bluebeam.com/hyperlink.html?link=studio.bluebeam.com/sessions/<%= sessionId %>">
-https://studio.bluebeam.com/hyperlink.html?link=studio.bluebeam.com/sessions/<%= sessionId %></a></p>
-<p>&#160;</p>
+    <div class="content-section">
+      <p><strong>Project Manager:</strong> <? if (pm) { ?><?= pm ?><? } else { ?>Not specified<? } ?></p>
+      <p><strong>Review Deadline:</strong> <?= review_end ?></p>
+    </div>
 
-<% if (download_url) { %>
-<h3>Download Link</h3>
-<p>Download files here: <a href="<%= download_url %>"><%= download_url %></a></p>
-<p>&#160;</p>
-<% } %>
+    <div class="content-section">
+      <h3 style="color: #005587; margin-bottom: 10px;">Review Materials</h3>
+      <p>Please provide your comments through the following platforms:</p>
+      <ul style="padding-left: 20px;">
+        <li>Preferred method: <a href="https://studio.bluebeam.com/sessions/<?= sessionId ?>" class="button">Bluebeam Studio Session</a></li>
+        <? if (download_url) { ?>
+          <li>Download files: <a href="<?= download_url ?>">Access Files Here</a></li>
+        <? } ?>
+        <li>FileMaker database</li>
+        <li>Attached reviewer_comments spreadsheet</li>
+      </ul>
+    </div>
 
-<% if (reviewer_notes) { %>
-<h3>&#160;</h3>
-<h3>Notes for Reviewers</h3>
-<p><%= reviewer_notes %></p>
-<% } %>
+    <? if (reviewer_notes) { ?>
+    <div class="content-section">
+      <h3 style="color: #005587; margin-bottom: 10px;">Special Instructions</h3>
+      <?!= reviewer_notes ?>
+    </div>
+    <? } ?>
 
-<% if (recharge_number) { %>
-<h3>Recharge</h3>
-<p>Time can be recharged to <%= recharge_number %></p>
-<p>&#160;</p>
-<% } %>
+    <? if (recharge_number) { ?>
+    <div class="content-section">
+      <p><strong>Recharge Number:</strong> <?= recharge_number ?></p>
+    </div>
+    <? } ?>
 
-<p>Thank you,<br />
-<em>UCSC Construction Documents</em><br />
-<em>1156 High Street, Barn G</em><br />
-<em>Physical Planning Development &amp; Operations</em><br />
-<em>University of California, Santa Cruz</em><br />
-<em>constdoc@ucsc.edu</em><br />
-<em>(831) 459-5326</em></p>
+    <div class="footer">
+      <p><strong>UCSC Construction Documents</strong><br>
+      1156 High Street, Barn G<br>
+      Physical Planning Development & Operations<br>
+      University of California, Santa Cruz<br>
+      constdoc@ucsc.edu | (831) 459-5326</p>
+    </div>
+  </div>
 </body>
 </html>

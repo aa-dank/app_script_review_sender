@@ -45,7 +45,7 @@ const CONFIG: Config = {
  */
 interface EmailRow {
   /** Primary distribution list email addresses */
-  distribution_email: string;
+  distribution_emails: string;
   /** Additional individual email addresses to include */
   additional_emails: string;
   /** Bluebeam Revu session invite text containing session ID */
@@ -146,7 +146,7 @@ class EmailProcessor {
    */
   private mapRowToEmailRow(row: any[], headers: { [key: string]: number }): EmailRow {
     return {
-      distribution_email: row[headers['distribution_email']] || '',
+      distribution_emails: row[headers['distribution_emails']] || '',
       additional_emails: row[headers['additional_emails']] || '',
       revu_session_invite: row[headers['revu_session_invite']] || '',
       body_template_values: row[headers['body_template_values']] || '',
@@ -168,7 +168,7 @@ class EmailProcessor {
   }
 
   private validateRow(row: EmailRow): boolean {
-    if (!row.distribution_email && !row.additional_emails) {
+    if (!row.distribution_emails && !row.additional_emails) {
       CustomLogger.debug('No recipient email addresses provided.');
       return false;
     }
@@ -199,10 +199,16 @@ class EmailBuilder {
 
   public async sendEmail(): Promise<boolean> {
     const recipients = this.compileEmailAddresses();
-    if (!recipients) return false;
+    if (!recipients) {
+      CustomLogger.debug('No valid email addresses found.');
+      return false;
+    }
 
     const emailBody = await this.buildEmailBody();
-    if (!emailBody) return false;
+    if (!emailBody) {
+      CustomLogger.debug('Email body could not be generated.');
+      return false;
+    }
 
     const attachments = await this.getAttachments();
     const subject = this.getFinalSubject();
@@ -210,13 +216,26 @@ class EmailBuilder {
     return this.sendEmailViaGmail(recipients, emailBody, attachments, subject);
   }
 
+  /**
+   * Generates the final email subject by processing the subject template
+   * If a subject template exists, it will be processed with any template values.
+   * Falls back to email_subject if no template, or DEFAULT_SUBJECT if neither exists.
+   * @returns {string} The processed subject line for the email
+   * @private
+   */
   private getFinalSubject(): string {
     if (this.row.email_subject_template) {
       try {
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
-        if (this.row.subject_template_value) {
-          subjectTemplate.subject_template_value = this.row.subject_template_value;
-        }
+        
+        // Create template values object
+        const values = {
+          subject_template_value: this.row.subject_template_value
+        };
+        
+        // Use Object.assign like body template
+        Object.assign(subjectTemplate, values);
+        
         const processedSubject = subjectTemplate.evaluate().getContent().trim();
         return processedSubject || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
@@ -234,7 +253,7 @@ class EmailBuilder {
    */
   private compileEmailAddresses(): string | null {
     const emails = [
-      ...this.parseEmails(this.row.distribution_email),
+      ...this.parseEmails(this.row.distribution_emails),
       ...this.parseEmails(this.row.additional_emails)
     ];
 
@@ -289,21 +308,44 @@ class EmailBuilder {
     }
   }
 
+  /**
+   * Retrieves the HTML template content from Google Drive
+   * Takes the email_body_template URL, extracts the file ID,
+   * and fetches the content as a string.
+   * @returns {Promise<string>} The HTML template content
+   * @throws {Error} If template file cannot be accessed or is invalid
+   * @private
+   */
   private async getTemplateContent(): Promise<string> {
+    // Extract the Google Drive file ID from the template URL
     const fileId = this.extractFileId(this.row.email_body_template);
+    
+    // Get the template file from Google Drive
     const templateFile = DriveApp.getFileById(fileId);
+    
+    // Convert the file content to a string and return
     return templateFile.getBlob().getDataAsString();
   }
 
+  /**
+   * Retrieves and returns the template values for the email body, 
+   * including any Bluebeam session ID if found.
+   * @returns {TemplateValues} Parsed template values from row data
+   */
   private getTemplateValues(): TemplateValues {
-    const values: TemplateValues = this.row.body_template_values ? 
-      JSON.parse(this.row.body_template_values) : {};
+    // Attempt to parse JSON from body_template_values, or use an empty object if not set
+    const values = this.row.body_template_values
+      ? JSON.parse(this.row.body_template_values)
+      : {};
 
+    // Parse the session ID from revu_session_invite, if present
     const sessionId = this.parseSessionId(this.row.revu_session_invite);
     if (sessionId) {
+      // If a valid session ID was found, attach it to the returned values
       values.sessionId = sessionId;
     }
 
+    // Return the final set of template values for merging into the email body
     return values;
   }
 
