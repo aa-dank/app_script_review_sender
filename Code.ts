@@ -8,61 +8,10 @@
  * @version 1.0.0
  */
 
-/** Defines the sheet names used in the spreadsheet */
-enum SheetNames {
-  /** Sheet containing pending email distributions */
-  TO_SEND = 'distributions_to_send',
-  /** Sheet containing record of sent distributions */
-  SENT_HISTORY = 'sent_history'
-}
+import {SheetNames, CONFIG, mapRowToEmailRow, EmailRow} from './SheetSetup';
 
-/**
- * Global configuration interface for the email distribution system
- * @interface Config
- */
-interface Config {
-  /** Email address to send from (requires Gmail "Send As" permissions) */
-  readonly FROM_EMAIL: string;
-  /** Default subject line for emails when none is provided */
-  readonly DEFAULT_SUBJECT: string;
-  /** ID of the Google Spreadsheet containing distribution data */
-  readonly SPREADSHEET_ID: string;
-  /** Enable debug logging */
-  readonly DEBUG_MODE: boolean;
-}
-
-const CONFIG: Config = {
-  FROM_EMAIL: 'constdoc@ucsc.edu',
-  DEFAULT_SUBJECT: 'Your Subject Here',
-  SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY',
-  DEBUG_MODE: true
-};
-
-// Types and Interfaces
-/**
- * Represents a row of email distribution data from the spreadsheet
- * @interface EmailRow
- */
-interface EmailRow {
-  /** Primary distribution list email addresses */
-  distribution_emails: string;
-  /** Additional individual email addresses to include */
-  additional_emails: string;
-  /** Bluebeam Revu session invite text containing session ID */
-  revu_session_invite: string;
-  /** JSON string containing template variable values */
-  body_template_values: string;
-  /** Google Drive URL of the email template HTML file */
-  email_body_template: string;
-  /** Comma-separated list of Google Drive URLs for attachments */
-  files: string;
-  /** Custom subject line for the email */
-  email_subject: string;
-  email_subject_template: string;
-  subject_template_value: string;
-  /** Allow for additional dynamic columns */
-  [key: string]: string; // Allow additional columns
-}
+/** Standard date-time format for consistency across the application */
+const DATE_FORMAT = "yyyy-MM-dd HH:mm:ss";
 
 interface ProcessedEmailRow extends EmailRow {
   datetime: Date;
@@ -125,7 +74,7 @@ class EmailProcessor {
 
     // Process rows in reverse order
     for (let i = data.length - 1; i >= 1; i--) {
-      const row = this.mapRowToEmailRow(data[i], headers);
+      const row = mapRowToEmailRow(data[i], headers);
       
       try {
         if (await this.processRow(row)) {
@@ -135,27 +84,6 @@ class EmailProcessor {
         CustomLogger.error(`Error processing row ${i + 1}`, error);
       }
     }
-  }
-
-  /**
-   * Maps a raw data row to a typed EmailRow object
-   * @param {any[]} row - Raw spreadsheet row data
-   * @param {{ [key: string]: number }} headers - Map of header names to column indices
-   * @returns {EmailRow} Typed email row object
-   * @private
-   */
-  private mapRowToEmailRow(row: any[], headers: { [key: string]: number }): EmailRow {
-    return {
-      distribution_emails: row[headers['distribution_emails']] || '',
-      additional_emails: row[headers['additional_emails']] || '',
-      revu_session_invite: row[headers['revu_session_invite']] || '',
-      body_template_values: row[headers['body_template_values']] || '',
-      email_body_template: row[headers['email_body_template']] || '',
-      files: row[headers['files']] || '',
-      email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT,
-      email_subject_template: row[headers['email_subject_template']] || '',
-      subject_template_value: row[headers['subject_template_value']] || ''
-    };
   }
 
   private async processRow(row: EmailRow): Promise<boolean> {
@@ -179,9 +107,30 @@ class EmailProcessor {
     return true;
   }
 
+  /**
+   * Formats a date according to the application's standard format
+   * @param {Date} date - The date to format
+   * @returns {string} Formatted date string
+   * @private
+   */
+  private formatDate(date: Date): string {
+    return Utilities.formatDate(
+      date,
+      Session.getScriptTimeZone(),
+      DATE_FORMAT
+    );
+  }
+
   private moveRowToHistory(rowIndex: number, rowData: any[]): void {
-    const rowWithTimestamp = [...rowData, new Date()];
+    const formattedDate = this.formatDate(new Date());
+    const rowWithTimestamp = [...rowData, formattedDate];
     this.historySheet.appendRow(rowWithTimestamp);
+    
+    // Set date format for the timestamp column
+    const lastCol = this.historySheet.getLastColumn();
+    this.historySheet.getRange(2, lastCol, this.historySheet.getLastRow() - 1, 1)
+      .setNumberFormat(DATE_FORMAT);
+      
     this.sourceSheet.deleteRow(rowIndex);
   }
 }
