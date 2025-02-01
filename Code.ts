@@ -350,7 +350,9 @@ class EmailBuilder {
   }
 
   /**
-   * Extracts a Bluebeam session ID from the provided text
+   * Extracts a Bluebeam session ID from the provided text.
+   * The session ID is expected to be in the format '123-456-789'.
+   * If multiple session IDs are found, the first one is used.
    * @param {string} text - Text containing the session ID
    * @returns {string | null} Extracted session ID or null if not found
    * @private
@@ -358,22 +360,26 @@ class EmailBuilder {
   private parseSessionId(text: string): string | null {
     if (!text) return null;
 
-    const matches = text.match(/\D(\d{3}-\d{3}-\d{3})(?=$|\D)/g);
-    if (!matches) return null;
+    // Regular expression to match session IDs in the format '123-456-789'
+    const sessionIdRegex = /\b\d{3}-\d{3}-\d{3}\b/;
+    const matches = text.match(sessionIdRegex);
 
-    const ids = matches.map(m => m.match(/\d{3}-\d{3}-\d{3}/)?.[0]).filter(Boolean);
-    
-    if (ids.length === 0) {
-      const NoBluebeamSessionID = 'No Bluebeam Session ID found in the text: ${text}';
-      CustomLogger.debug(NoBluebeamSessionID);
+    if (!matches) {
+      // Log if no session ID is found
+      CustomLogger.debug(`No Bluebeam Session ID found in the text: ${text}`);
       return null;
     }
 
-    if (new Set(ids).size > 1) {
-      const multipleSessionIDs = 'Multiple different session IDs found in the text: ${text}\n Using first match.';
-      CustomLogger.debug(multipleSessionIDs);
+    // Filter out any falsy values from matches
+    const ids = matches.filter(Boolean);
+    CustomLogger.debug(`Found session IDs: ${ids.join(', ')}`);
+
+    if (ids.length > 1) {
+      // Log if multiple session IDs are found and indicate using the first match
+      CustomLogger.debug(`Multiple different session IDs found in the text: ${text}\n Using first match.`);
     }
 
+    // Return the first session ID found or null if none
     return ids[0] || null;
   }
 
@@ -465,7 +471,7 @@ class CustomLogger {
  */
 async function processEmailDistributions(): Promise<void> {
   try {
-      CustomLogger.debug('Doin it.')  
+      CustomLogger.debug('Processing email distributions...');
       const processor = new EmailProcessor();
       await processor.sendEmails();
       CustomLogger.debug('Email distribution processing completed.');
@@ -539,7 +545,7 @@ function testSpreadsheetPermissions() {
   
   try {
     // Test 1: Basic SpreadsheetApp access
-    const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const activeSpreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     CustomLogger.debug('Active spreadsheet test:', {
       name: activeSpreadsheet.getName(),
       id: activeSpreadsheet.getId()

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Bluebeam Revu Submittal Notification</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      color: #333;
+      line-height: 1.45;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 600px;
+      margin: 30px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .header {
+      border-bottom: 2px solid #005587;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+    }
+    .title {
+      font-size: 1.2em;
+      color: #005587;
+      margin: 0;
+    }
+    p {
+      margin: 0 0 1em;
+    }
+    .button {
+      display: inline-block;
+      text-decoration: none;
+      background-color: #005587;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 4px;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #666;
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+    }
+    .notes {
+      background-color: #f0fafc;
+      margin-top: 1em;
+      padding: 10px;
+      border-left: 4px solid #005587;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 class="title">Bluebeam Revu Submittal Notification</h1>
+    </div>
+    <p>This email serves as notice that the University review for the
+    requested submittal has begun.</p>
+
+    <p>Please review the submittal in the project submittal review
+    session in Bluebeam:</p>
+
+    <p>
+      <a class="button" href="https://studio.bluebeam.com/hyperlink.html?link=studio.bluebeam.com/sessions/<?= sessionId ?>">
+        Join Bluebeam Session
+      </a>
+    </p>
+
+    <? if (reviewer_notes) { ?>
+    <div class="notes">
+      <strong>Additional notes for reviewers:</strong><br>
+      <?!= reviewer_notes ?>
+    </div>
+    <? } ?>
+
+    <div class="footer">
+      <p><strong>UCSC Construction Documents</strong><br>
+      1156 High Street, Barn G<br>
+      Physical Planning Development &amp; Operations<br>
+      University of California, Santa Cruz<br>
+      (831) 459-5326</p>
+    </div>
+  </div>
+</body>
+</html>
