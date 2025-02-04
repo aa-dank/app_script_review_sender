@@ -219,6 +219,17 @@ class EmailBuilder {
     return this.sendEmailViaGmail(recipients, emailBody, attachments, subject);
   }
 
+  // Use this function to decode HTML entities such that they are displayed correctly in the email
+  private decodeHtmlEntities(text: string): string {
+    if (!text) return text;
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
   /**
    * Generates the final email subject by processing the subject template
    * If a subject template exists, it will be processed with any template values.
@@ -231,14 +242,12 @@ class EmailBuilder {
       try {
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
         
-        // Create template values object
+        // Create template values object with decoded text
         const values = {
-          subject_template_value: this.row.subject_template_value
+          subject_template_value: this.decodeHtmlEntities(this.row.subject_template_value)
         };
         
-        // Use Object.assign like body template
         Object.assign(subjectTemplate, values);
-        
         const processedSubject = subjectTemplate.evaluate().getContent().trim();
         return processedSubject || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
