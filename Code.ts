@@ -357,30 +357,18 @@ class EmailBuilder {
   private sanitizeJsonText(text: string): string {
     if (!text) return text;
     
-    // First trim the text
-    let sanitized = text.trim();
-    
-    try {
-      // If it's already valid JSON, return it
-      JSON.parse(sanitized);
-      return sanitized;
-    } catch (e) {
-      // If not valid JSON, attempt to sanitize
-      sanitized = sanitized
-        .replace(/\\/g, '\\\\')      // Escape backslashes
-        .replace(/\n/g, '\\n')       // Replace newlines
-        .replace(/\r/g, '\\r')       // Replace carriage returns
-        .replace(/\t/g, '\\t')       // Replace tabs
-        .replace(/"/g, '\\"')        // Escape quotes
-        .replace(/\s+/g, ' ');       // Normalize whitespace
-        
-      // Ensure proper JSON structure
-      if (!sanitized.startsWith('{')) sanitized = '{' + sanitized;
-      if (!sanitized.endsWith('}')) sanitized = sanitized + '}';
+    // Remove extra escaping
+    let cleaned = text
+      .replace(/\\"/g, '"')     // Remove escaped quotes
+      .replace(/\\\\/g, '\\')   // Remove double escapes
+      .replace(/\r?\n/g, ' ')   // Replace newlines with spaces
+      .trim();                  // Remove extra whitespace
       
-      CustomLogger.debug('Sanitized JSON:', { before: text, after: sanitized });
-      return sanitized;
-    }
+    // If it's not wrapped in curly braces, wrap it
+    if (!cleaned.startsWith('{')) cleaned = '{' + cleaned;
+    if (!cleaned.endsWith('}')) cleaned = cleaned + '}';
+    
+    return cleaned;
   }
 
   /**
