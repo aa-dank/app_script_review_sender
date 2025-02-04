@@ -129,7 +129,10 @@ class EmailProcessor {
       
       try {
         if (await this.processRow(row)) {
+          CustomLogger.debug(`Row ${i + 1} processed successfully. Moving to history.`);
           this.moveRowToHistory(i + 1, data[i]);
+        } else {
+          CustomLogger.debug(`Row ${i + 1} skipped due to validation or processing failure.`);
         }
       } catch (error) {
         CustomLogger.error(`Error processing row ${i + 1}`, error);
@@ -319,12 +322,15 @@ class EmailBuilder {
   private async getTemplateContent(): Promise<string> {
     // Extract the Google Drive file ID from the template URL
     const fileId = this.extractFileId(this.row.email_body_template);
+    CustomLogger.debug(`Retrieving template content for fileId: ${fileId}`);
     
     // Get the template file from Google Drive
     const templateFile = DriveApp.getFileById(fileId);
     
     // Convert the file content to a string and return
-    return templateFile.getBlob().getDataAsString();
+    const content = templateFile.getBlob().getDataAsString();
+    CustomLogger.debug(`Template content retrieved (first 100 chars): ${content.substring(0, 100)}`);
+    return content;
   }
 
   /**
@@ -350,11 +356,31 @@ class EmailBuilder {
    */
   private sanitizeJsonText(text: string): string {
     if (!text) return text;
-    return text
-      .replace(/\\/g, '\\\\')   // Must escape backslashes first
-      .replace(/\r?\n/g, '\\n') // Replace newlines
-      .replace(/\t/g, '\\t')    // Replace tabs
-      .replace(/"/g, '\\"');    // Escape quotes
+    
+    // First trim the text
+    let sanitized = text.trim();
+    
+    try {
+      // If it's already valid JSON, return it
+      JSON.parse(sanitized);
+      return sanitized;
+    } catch (e) {
+      // If not valid JSON, attempt to sanitize
+      sanitized = sanitized
+        .replace(/\\/g, '\\\\')      // Escape backslashes
+        .replace(/\n/g, '\\n')       // Replace newlines
+        .replace(/\r/g, '\\r')       // Replace carriage returns
+        .replace(/\t/g, '\\t')       // Replace tabs
+        .replace(/"/g, '\\"')        // Escape quotes
+        .replace(/\s+/g, ' ');       // Normalize whitespace
+        
+      // Ensure proper JSON structure
+      if (!sanitized.startsWith('{')) sanitized = '{' + sanitized;
+      if (!sanitized.endsWith('}')) sanitized = sanitized + '}';
+      
+      CustomLogger.debug('Sanitized JSON:', { before: text, after: sanitized });
+      return sanitized;
+    }
   }
 
   /**
@@ -397,14 +423,20 @@ class EmailBuilder {
    * @private
    */
   private async getAttachments(): Promise<GoogleAppsScript.Base.Blob[]> {
-    if (!this.row.files) return [];
+    if (!this.row.files) {
+      CustomLogger.debug('No attachments provided.');
+      return [];
+    }
 
     const fileUrls = this.row.files.split(/[,;]+/).map(url => url.trim());
+    CustomLogger.debug(`Processing ${fileUrls.length} attachment(s).`);
+    
     const attachments: GoogleAppsScript.Base.Blob[] = [];
 
     for (const url of fileUrls) {
       try {
         const fileId = this.extractFileId(url);
+        CustomLogger.debug(`Retrieving attachment for fileId: ${fileId}`);
         const file = DriveApp.getFileById(fileId);
         attachments.push(file.getBlob());
       } catch (error) {
@@ -412,6 +444,7 @@ class EmailBuilder {
       }
     }
 
+    CustomLogger.debug(`Total attachments retrieved: ${attachments.length}`);
     return attachments;
   }
 
@@ -438,12 +471,14 @@ class EmailBuilder {
     attachments: GoogleAppsScript.Base.Blob[],
     subject: string
   ): boolean {
+    CustomLogger.debug(`Attempting to send email. Recipients: ${recipients}, Subject: ${subject}, Attachments count: ${attachments.length}`);
     try {
       GmailApp.sendEmail(recipients, subject, '', {
         htmlBody,
         attachments,
         from: CONFIG.FROM_EMAIL
       });
+      CustomLogger.debug('Email sent successfully.');
       return true;
     } catch (error) {
       CustomLogger.error('Error sending email', error);
