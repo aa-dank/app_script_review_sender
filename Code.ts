@@ -51,7 +51,7 @@ interface EmailRow {
   /** Bluebeam Revu session invite text containing session ID */
   revu_session_invite: string;
   /** JSON string containing template variable values */
-  body_template_values: string;
+  template_values: string; // Updated property name
   /** Google Drive URL of the email template HTML file */
   email_body_template: string;
   /** Comma-separated list of Google Drive URLs for attachments */
@@ -149,7 +149,7 @@ class EmailProcessor {
       distribution_emails: row[headers['distribution_emails']] || '',
       additional_emails: row[headers['additional_emails']] || '',
       revu_session_invite: row[headers['revu_session_invite']] || '',
-      body_template_values: row[headers['body_template_values']] || '',
+      template_values: row[headers['template_values']] || '',  // Changed mapping here
       email_body_template: row[headers['email_body_template']] || '',
       files: row[headers['files']] || '',
       email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT,
@@ -333,20 +333,28 @@ class EmailBuilder {
    * @returns {TemplateValues} Parsed template values from row data
    */
   private getTemplateValues(): TemplateValues {
-    // Attempt to parse JSON from body_template_values, or use an empty object if not set
-    const values = this.row.body_template_values
-      ? JSON.parse(this.row.body_template_values)
-      : {};
-
+    // Sanitize JSON before parsing
+    const sanitized = this.sanitizeJsonText(this.row.template_values); // Changed property name here
+    const values = sanitized ? JSON.parse(sanitized) : {};
+    
     // Parse the session ID from revu_session_invite, if present
     const sessionId = this.parseSessionId(this.row.revu_session_invite);
     if (sessionId) {
-      // If a valid session ID was found, attach it to the returned values
       values.sessionId = sessionId;
     }
-
-    // Return the final set of template values for merging into the email body
     return values;
+  }
+
+  /**
+   * Sanitizes JSON text by escaping problematic characters.
+   */
+  private sanitizeJsonText(text: string): string {
+    if (!text) return text;
+    return text
+      .replace(/\\/g, '\\\\')   // Must escape backslashes first
+      .replace(/\r?\n/g, '\\n') // Replace newlines
+      .replace(/\t/g, '\\t')    // Replace tabs
+      .replace(/"/g, '\\"');    // Escape quotes
   }
 
   /**
