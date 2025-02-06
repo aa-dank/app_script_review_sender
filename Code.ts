@@ -55,7 +55,7 @@ interface EmailRow {
   /** Google Drive URL of the email template HTML file */
   email_body_template: string;
   /** Comma-separated list of Google Drive URLs for attachments */
-  files: string;
+  attachments_urls: string; // Changed property name from "files"
   /** Custom subject line for the email */
   email_subject: string;
   email_subject_template: string;
@@ -154,7 +154,7 @@ class EmailProcessor {
       revu_session_invite: row[headers['revu_session_invite']] || '',
       template_values: row[headers['template_values']] || '',  // Changed mapping here
       email_body_template: row[headers['email_body_template']] || '',
-      files: row[headers['files']] || '',
+      attachments_urls: row[headers['attachments_urls']] || '',  // Changed mapping here
       email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT,
       email_subject_template: row[headers['email_subject_template']] || '',
       subject_template_value: row[headers['subject_template_value']] || ''
@@ -420,12 +420,12 @@ class EmailBuilder {
    * @private
    */
   private async getAttachments(): Promise<GoogleAppsScript.Base.Blob[]> {
-    if (!this.row.files) {
+    if (!this.row.attachments_urls) {  // Changed property name here
       CustomLogger.debug('No attachments provided.');
       return [];
     }
 
-    const fileUrls = this.row.files.split(/[,;]+/).map(url => url.trim());
+    const fileUrls = this.row.attachments_urls.split(/[,;]+/).map(url => url.trim()); // Using updated property
     CustomLogger.debug(`Processing ${fileUrls.length} attachment(s).`);
     
     const attachments: GoogleAppsScript.Base.Blob[] = [];
