@@ -231,22 +231,19 @@ class EmailBuilder {
   }
 
   /**
-   * Generates the final email subject by processing the subject template
-   * If a subject template exists, it will be processed with any template values.
-   * Falls back to email_subject if no template, or DEFAULT_SUBJECT if neither exists.
-   * @returns {string} The processed subject line for the email
-   * @private
+   * Generates the final email subject by processing the subject template.
+   * Now uses values from the template_values column.
    */
   private getFinalSubject(): string {
     if (this.row.email_subject_template) {
       try {
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
-        
-        // Create template values object with decoded text
-        const values = {
-          subject_template_value: this.decodeHtmlEntities(this.row.subject_template_value)
-        };
-        
+        // Use all template values from template_values column.
+        let values = this.getTemplateValues();
+        // Optionally override or add the decoded subject_template_value.
+        if (this.row.subject_template_value) {
+          values.subject_template_value = this.decodeHtmlEntities(this.row.subject_template_value);
+        }
         Object.assign(subjectTemplate, values);
         const processedSubject = subjectTemplate.evaluate().getContent().trim();
         return processedSubject || CONFIG.DEFAULT_SUBJECT;
