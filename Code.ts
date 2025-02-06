@@ -216,7 +216,43 @@ class EmailBuilder {
     const attachments = await this.getAttachments();
     const subject = this.getFinalSubject();
 
-    return this.sendEmailViaGmail(recipients, emailBody, attachments, subject);
+    // Send email; if successful, trash the attachments.
+    const sent = this.sendEmailViaGmail(recipients, emailBody, attachments, subject);
+    if (sent) {
+      this.trashAttachments();
+    }
+    return sent;
+  }
+
+  /**
+   * Trashes all files specified in the attachments_urls column.
+   * Now logs extra debug info if an error occurs.
+   */
+  private trashAttachments(): void {
+    if (!this.row.attachments_urls) return;
+    const fileUrls = this.row.attachments_urls.split(/[,;]+/).map(url => url.trim());
+    for (const url of fileUrls) {
+      try {
+        const fileId = this.extractFileId(url);
+        CustomLogger.debug(`Trashing file with fileId: ${fileId}`);
+        DriveApp.getFileById(fileId).setTrashed(true);
+      } catch (error) {
+        // Attempt to retrieve extra file metadata for debugging
+        let fileInfo: Record<string, any> = {};
+        try {
+          const file = DriveApp.getFileById(this.extractFileId(url));
+          fileInfo = {
+            id: file.getId(),
+            name: file.getName(),
+            owner: file.getOwner() ? file.getOwner().getEmail() : 'Unknown',
+            sharingAccess: file.getSharingAccess()
+          };
+        } catch (subError) {
+          fileInfo = { id: this.extractFileId(url), error: subError.toString() };
+        }
+        CustomLogger.error(`Error trashing file from URL ${url}. File info: ${JSON.stringify(fileInfo)}`, error);
+      }
+    }
   }
 
   // Use this function to decode HTML entities such that they are displayed correctly in the email
