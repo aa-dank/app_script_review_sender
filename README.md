@@ -8,6 +8,8 @@ This system automates sending emails with document attachments and Bluebeam Stud
 
 Your spreadsheet should include the following columns. Ensure that column header names exactly match these names so the script can correctly map data.
 
+![Distribution Markup](constdoc_review_distribution_markup.jpg)
+
 ### Required Columns
 
 - **distribution_emails**  
@@ -46,10 +48,6 @@ Your spreadsheet should include the following columns. Ensure that column header
 - **revu_session_invite**  
   Contains Bluebeam Revu session invite details. The script parses this column to extract a session ID (expected in the format `123-456-789`). If a valid session ID is found, it will be passed to the email template.  
   _Tip:_ Ensure the session invite text contains a valid session ID, as the first matching sequence in the invite text is used.
-
-- **Additional Dynamic Columns**  
-  Any extra columns added will be automatically passed as template variables available in the email body template.
-
 ---
 
 ## How the Script Works
@@ -109,6 +107,49 @@ Your spreadsheet should include the following columns. Ensure that column header
 
 ---
 
-For further assistance or to report issues, contact your system administrator or the support team.
+## Appendix 1: Creating HTML Email Templates with Apps Script
+
+The Apps Script HTML templating engine lets you design dynamic email templates. Think of it like filling in the blanks on a worksheet:
+- Create a new HTML file (e.g., "email_template.html") stored in Google Drive.
+- Design your email layout using standard HTML and CSS.
+- Insert dynamic placeholders using syntax like <?= projectName ?>. For example, if you include:
+  <?= projectName ?>
+  the script replaces it with the value provided in your JSON (e.g., "New Building").
+- In your spreadsheet, set the `email_body_template` (or `email_subject_template`) column to the URL of your HTML file.
+- Ensure that the corresponding `template_values` JSON contains keys matching your placeholders.
+
+This approach is similar to declaring a variable in arithmetic (e.g., "let x = 2") and then using that value in a calculation.
+
+## Appendix 2: Using Template Values in Email Templates
+
+The `template_values` column lets you provide key/value pairs in JSON format to dynamically fill placeholders in your email body and subject templates. Think of it like setting variables in a simple arithmetic problem:
+
+- In arithmetic, you might say "let x = 2" and then compute "x + 3" to get 5.
+- In your JSON, you set variables like:
+  ```json
+  {"x":"2"}
+  ```
+  ...or
+  ```json
+  {"projectName": "New Building", "deadline": "2023-11-15"}
+  ```
+  Here, `projectName` is like a variable that holds the value "New Building".
+
+In your email templates, you can use these keys as placeholders (e.g., `<?= projectName ?>`). When the script runs, it replaces the placeholder with the corresponding value from your JSON.
+
+### Tips for formatting your JSON:
+- Always use proper double quotes around keys and values.
+- Avoid using extra characters or missing punctuation (for example, commas between pairs).
+- A correct example:
+  ```json
+  {"projectName": "New Building", "deadline": "2023-11-15"}
+  ```
+- An incorrect example:
+  ```
+  {projectName: New Building, deadline: '2023-11-15'}
+  ```
+
+This mechanism works just as replacing a variable in an arithmetic equation: once you set the variable, you use it to compute your final value (in this case, the email subject or body).
+
 
 Happy Document Distribution!
