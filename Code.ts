@@ -57,7 +57,6 @@ interface EmailRow {
   /** Comma-separated list of Google Drive URLs for attachments */
   attachments_urls: string; // Changed property name from "files"
   /** Custom subject line for the email */
-  email_subject: string;
   email_subject_template: string;
   subject_template_value: string;
   /** Allow for additional dynamic columns */
@@ -155,7 +154,6 @@ class EmailProcessor {
       template_values: row[headers['template_values']] || '',  // Changed mapping here
       email_body_template: row[headers['email_body_template']] || '',
       attachments_urls: row[headers['attachments_urls']] || '',  // Changed mapping here
-      email_subject: row[headers['email_subject']] || CONFIG.DEFAULT_SUBJECT,
       email_subject_template: row[headers['email_subject_template']] || '',
       subject_template_value: row[headers['subject_template_value']] || ''
     };
@@ -268,15 +266,14 @@ class EmailBuilder {
 
   /**
    * Generates the final email subject by processing the subject template.
-   * Now uses values from the template_values column.
+   * Uses the email_subject_template column exclusively,
+   * falling back to CONFIG.DEFAULT_SUBJECT if empty.
    */
   private getFinalSubject(): string {
     if (this.row.email_subject_template) {
       try {
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
-        // Use all template values from template_values column.
         let values = this.getTemplateValues();
-        // Optionally override or add the decoded subject_template_value.
         if (this.row.subject_template_value) {
           values.subject_template_value = this.decodeHtmlEntities(this.row.subject_template_value);
         }
@@ -288,7 +285,7 @@ class EmailBuilder {
         return CONFIG.DEFAULT_SUBJECT;
       }
     }
-    return this.row.email_subject || CONFIG.DEFAULT_SUBJECT;
+    return CONFIG.DEFAULT_SUBJECT;
   }
 
   /**
