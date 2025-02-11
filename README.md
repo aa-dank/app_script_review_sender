@@ -121,37 +121,23 @@ The script automatically maps spreadsheet columns to expected keys. Ensure your 
 
 ---
 
-## Appendix 1: Creating HTML Email Templates with Apps Script
-
-The Apps Script HTML templating engine lets you design dynamic email templates. Think of it like filling in the blanks on a worksheet:
-- Create a new HTML file (e.g., "email_template.html") stored in Google Drive.
-- Design your email layout using standard HTML and CSS.
-- Insert dynamic placeholders using syntax like <?= projectName ?>. For example, if you include:
-  <?= projectName ?>
-  the script replaces it with the value provided in your JSON (e.g., "New Building").
-- In your spreadsheet, set the `email_body_template` (or `email_subject_template`) column to the URL of your HTML file.
-- Ensure that the corresponding `template_values` JSON contains keys matching your placeholders.
-
-This approach is similar to declaring a variable in arithmetic (e.g., "let x = 2") and then using that value in a calculation.
-
-Practically, the easiest way to create these is to elicit the html from an LLM chat service. Provide existing templates as examples and be sure to specify that it should use the "Google App Script HTML templating" to create it.
-
-## Appendix 2: Using Template Values in Email Templates
+## Appendix 1: Using Template Values in Email Templates
 
 The `template_values` column lets you provide key/value pairs in JSON format to dynamically fill placeholders in your email body and subject templates. Think of it like setting variables in a simple arithmetic problem:
 
 - In arithmetic, you might say "let x = 2" and then compute "x + 3" to get 5.
-- In your JSON, you set variables like:
-  ```json
-  {"x":"2"}
-  ```
-  ...or
-  ```json
-  {"projectName": "New Building", "deadline": "2023-11-15"}
-  ```
-  Here, `projectName` is like a variable that holds the value "New Building".
-
-In your email templates, you can use these keys as placeholders (e.g., `<?= projectName ?>`). When the script runs, it replaces the placeholder with the corresponding value from your JSON.
+- Comparably, in your email templates you define variables via JSON. For instance, in your spreadsheet's "template_values" column you can supply:
+  
+  {
+    "x": "2",
+    "project_name": "New Building"
+  }
+  
+Then, in your HTML template you use the variable like so:
+  
+  `<p>Project: <?= project_name ?></p>`
+  
+Both approaches ultimately provide dynamic values for further processing.
 
 ### Tips for formatting your JSON:
 - Always use proper double quotes around keys and values.
@@ -167,5 +153,15 @@ In your email templates, you can use these keys as placeholders (e.g., `<?= proj
 
 This mechanism works just as replacing a variable in an arithmetic equation: once you set the variable, you use it to compute your final value (in this case, the email subject or body).
 
+## Appendix 2: Creating HTML Email Templates with Apps Script
+
+The Apps Script HTML templating engine lets you design dynamic email templates. Think of it like filling in the blanks on a worksheet:
+- Create a new HTML file (e.g., "email_template.html") stored in Google Drive.
+- Design your email layout using standard HTML and CSS.
+- Insert dynamic placeholders using syntax like <?= projectName ?>. For example, if you include:
+  <?= projectName ?>
+  the script replaces it with the value provided in your JSON (e.g., "New Building").
+- In your spreadsheet, set the `email_body_template` (or `email_subject_template`) column to the URL of your HTML file.
+- Ensure that the corresponding `template_values` JSON contains keys matching your placeholders.
 
 Happy Document Distribution!
