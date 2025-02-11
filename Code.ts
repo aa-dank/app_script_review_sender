@@ -34,6 +34,7 @@ interface Config {
 const CONFIG: Config = {
   FROM_EMAIL: 'constdoc@ucsc.edu',
   DEFAULT_SUBJECT: 'Your Subject Here',
+  // prod spreadsheet id: 1bcbDMbwdch6BE1KzBrUPi0f4FQHiVd-ya8kPcrnnQ5Q
   SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY',
   DEBUG_MODE: true
 };

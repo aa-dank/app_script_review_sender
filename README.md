@@ -50,6 +50,24 @@ Your spreadsheet should include the following columns. Ensure that column header
   _Tip:_ Ensure the session invite text contains a valid session ID, as the first matching sequence in the invite text is used.
 ---
 
+## Configuration and Sheet Setup
+
+The script's configuration is defined in Code.ts (and subsequently in Code.gs) via a global CONFIG object with properties such as:
+- FROM_EMAIL: The sender's email address.
+- DEFAULT_SUBJECT: Fallback subject if no template is provided.
+- SPREADSHEET_ID: The ID of the Google Spreadsheet containing distribution data.
+- DEBUG_MODE: Enables detailed logging for troubleshooting.
+
+The script automatically maps spreadsheet columns to expected keys. Ensure your spreadsheet includes columns with these exact header names:
+- distribution_emails
+- additional_emails
+- email_body_template
+- attachments_urls
+- email_subject_template
+- subject_template_value
+- template_values
+- revu_session_invite
+
 ## How the Script Works
 
 1. **Row Processing**  
@@ -74,12 +92,8 @@ Your spreadsheet should include the following columns. Ensure that column header
 ## Tips for End Users
 
 - **Template Values JSON:** Always ensure that the JSON in the `template_values` column is valid. Use proper quotes and avoid extra escape characters.  
-- **File URLs:** Only valid Google Drive URLs will work. Make sure each URL points to the correct file, and note that files will be trashed after processing.  
+- **File URLs:** Only valid Google Drive URLs will work. Make sure each URL points to the correct file, and note that files passed to attachments_urls will be trashed after processing.  
 - **Bluebeam Session Invites:** If using Bluebeam invites, include a valid session ID (e.g., `123-456-789`) within the `revu_session_invite` text so it is automatically extracted.
-- **Debugging:**  
-  - If emails aren’t sending as expected, enable the script's debug mode by setting `DEBUG_MODE` to `true` in the configuration to log detailed error messages.
-  - Check the email subject and body templates for proper placeholders corresponding to keys in your JSON.
-  - Review the logged metadata when attachments cannot be trashed correctly.
 
 ---
 
@@ -119,6 +133,8 @@ The Apps Script HTML templating engine lets you design dynamic email templates. 
 - Ensure that the corresponding `template_values` JSON contains keys matching your placeholders.
 
 This approach is similar to declaring a variable in arithmetic (e.g., "let x = 2") and then using that value in a calculation.
+
+Practically, the easiest way to create these is to elicit the html from an LLM chat service. Provide existing templates as examples and be sure to specify that it should use the "Google App Script HTML templating" to create it.
 
 ## Appendix 2: Using Template Values in Email Templates
 

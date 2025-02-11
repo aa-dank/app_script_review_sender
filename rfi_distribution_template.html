@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style type="text/css">
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333333;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .header {
+      margin-bottom: 25px;
+      color: #005587;
+    }
+    .content-section {
+      margin-bottom: 20px;
+    }
+    .reviewer-notes {
+      background-color: #f8f9fa;
+      border-left: 4px solid #005587;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .footer {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid #eeeeee;
+      font-size: 0.9em;
+      color: #666666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="content-section">
+      <p>Please find an attached RFI for your review and response.</p>
+    </div>
+
+    <? if (reviewer_notes) { ?>
+    <div class="reviewer-notes">
+      <h3 style="color: #005587; margin-top: 0;">Additional Notes</h3>
+      <?!= reviewer_notes ?>
+    </div>
+    <? } ?>
+
+    <div class="footer">
+      <p>Thank you,</p>
+      <p><strong>UCSC Construction Documents</strong><br>
+      1156 High Street, Barn G<br>
+      Physical Planning Development & Operations<br>
+      University of California, Santa Cruz<br>
+      constdoc@ucsc.edu<br>
+      (831) 459-5326</p>
+    </div>
+  </div>
+</body>
+</html>
