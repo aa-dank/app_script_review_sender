@@ -2,6 +2,16 @@
 <html>
 <head>
   <base target="_top">
+  <!-- Template Variables:
+       project_number: The numeric identifier of the project.
+       project_name: The name of the project (optional).
+       pm: The project manager's name.
+       review_end: The review deadline date/time.
+       sessionId: The Bluebeam Studio session ID.
+       large_files_download_url: Optional download link for files.
+       reviewer_notes: Additional special instructions.
+       recharge_number: Optional recharge number.
+  -->
   <style type="text/css">
     /* Reset styles for email clients */
     body {
@@ -74,7 +84,7 @@
       <ul style="padding-left: 20px;">
         <li>Preferred method: <a href="https://studio.bluebeam.com/sessions/<?= sessionId ?>" class="button">Bluebeam Studio Session</a></li>
         <? if (download_url) { ?>
-          <li>Download files: <a href="<?= download_url ?>">Access Files Here</a></li>
+          <li>Download files: <a href="<?= large_files_download_url ?>">Access Files Here</a></li>
         <? } ?>
         <li>FileMaker database</li>
         <li>Attached reviewer_comments spreadsheet</li>

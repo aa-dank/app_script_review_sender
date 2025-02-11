@@ -2,6 +2,9 @@
 <html>
 <head>
   <base target="_top">
+  <!-- Template Variables:
+       large_files_download_url: URL for downloading review documents when attachments exceed size limits.
+  -->
   <style type="text/css">
     body {
       margin: 0;
@@ -49,14 +52,14 @@
       <h2>Submittal Review Response</h2>
     </div>
 
-    <? if (response_share_link) { ?>
+    <? if (large_files_download_url) { ?>
     <div class="notice">
       <p>Due to file size, the reviewed documents are available via the link below:</p>
-      <a href="<?= response_share_link ?>" class="button">Download Review Documents</a>
-      <p>These files will only be hosted for 30 days from this notification.</p>
+      <a href="<?= large_files_download_url ?>" class="button">Download Review Documents</a>
+      <p>These files will be hosted for at least 30 days from this notification.</p>
     </div>
     <? } else { ?>
-    <p>Please find the reviewed submittal document(s) attached to this email for your reference.</p>
+      <p>Please find the reviewed submittal document(s) attached to this email for your reference.</p>
     <? } ?>
 
     <div class="footer">
@@ -64,7 +67,7 @@
       1156 High Street, Barn G<br>
       Physical Planning Development & Operations<br>
       University of California, Santa Cruz<br>
-      constdoc@ucsc.edu<br>
+      <a href="mailto:constdoc@ucsc.edu">constdoc@ucsc.edu</a><br>
       (831) 459-5326</p>
     </div>
   </div>

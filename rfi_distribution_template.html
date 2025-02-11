@@ -2,6 +2,10 @@
 <html>
 <head>
   <base target="_top">
+  <!-- Template Variables:
+       reviewer_notes: Additional notes or comments for the RFI review.
+       large_files_download_url: Optional URL for downloading large attachment files.
+  -->
   <style type="text/css">
     body {
       margin: 0;
@@ -37,10 +41,17 @@
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="container"></div>
+  <? if (large_files_download_url) { ?>
+    <div class="content-section">
+      <p>Please find RFI response files for your use.: <a href="<?= large_files_download_url ?>" class="button">Download Large Files</a></p>
+      <p>These files will be available for at least 30 days.</p>
+    </div>
+  <? } else { ?>
     <div class="content-section">
       <p>Please find an attached RFI for your review and response.</p>
     </div>
+  <? } ?>
 
     <? if (reviewer_notes) { ?>
     <div class="reviewer-notes">
