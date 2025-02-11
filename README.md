@@ -82,7 +82,7 @@ The script automatically maps spreadsheet columns to expected keys. Ensure your 
 3. **Email Sending and Attachments Management**  
    - Email is sent via Gmail using the specified sender email (set in configuration).  
    - Upon successful sending, the script will automatically trash all files specified in the `attachments_urls` column. This helps ensure obsolete files aren't left on Drive.
-   - If any errors occur during the trashing process, extra file metadata (including file name, owner, and sharing access information) is logged to help troubleshoot permissions or file existence issues.
+   - **Attachment Size Limit:** Each attached file must be under 21 MB. If any file exceeds this limit, the script logs an error and throws an exception. As a result, the email will not be sent until the issue is resolved.
 
 4. **History Tracking**  
    Once an email is successfully sent, the corresponding row is moved to a history sheet (`sent_history`) along with a timestamp.

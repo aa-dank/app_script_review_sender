@@ -1,76 +1,98 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <title>RFI Response Distribution</title>
   <base target="_top">
   <!-- Template Variables:
-       reviewer_notes: Additional reviewer comments or special instructions.
-       large_files_download_url: Optional URL for downloading large attachment files.
+       reviewer_notes: Additional reviewer comments.
+       large_files_download_url: URL for downloading large attachment files.
   -->
   <style type="text/css">
     body {
       margin: 0;
-      padding: 20px;
+      padding: 0;
       font-family: Arial, sans-serif;
-      line-height: 1.6;
-      color: #333333;
+      background-color: #f6f6f6;
+      color: #333;
     }
     .container {
       max-width: 600px;
-      margin: 0 auto;
+      background: #fff;
+      margin: 30px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
     }
     .header {
-      margin-bottom: 25px;
+      border-bottom: 2px solid #005587;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
       color: #005587;
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 1.3em;
     }
     .content-section {
       margin-bottom: 20px;
     }
+    .button {
+      display: inline-block;
+      background-color: #005587;
+      color: #fff !important;
+      padding: 12px 25px;
+      text-decoration: none;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
     .reviewer-notes {
-      background-color: #f8f9fa;
+      background-color: #f0fafc;
       border-left: 4px solid #005587;
       padding: 15px;
       margin: 15px 0;
     }
     .footer {
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 1px solid #eeeeee;
+      border-top: 1px solid #eee;
+      padding-top: 15px;
       font-size: 0.9em;
-      color: #666666;
+      color: #666;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  
   <div class="container">
-    
+    <div class="header">
+      <h2>RFI Response Notification</h2>
+    </div>
     <? if (large_files_download_url) { ?>
       <div class="content-section">
-        <p>Please find RFI response files for your use.: <a href="<?= large_files_download_url ?>" class="button">Download Large Files</a></p>
-        <p>These files will be available for at least 30 days.</p>
+        <p>Please find RFI response files for your use:</p>
+        <a href="<?= large_files_download_url ?>" class="button">Download Large Files</a>
+        <p>Files will be available for at least 30 days.</p>
       </div>
     <? } else { ?>
-    <div class="content-section">
-      <p>Please find attached RFI response for your use.</p>
-    </div>
+      <div class="content-section">
+        <p>Please find attached RFI response for your review.</p>
+      </div>
     <? } ?>
-
     <? if (reviewer_notes) { ?>
-    <div class="reviewer-notes">
-      <h3 style="color: #005587; margin-top: 0;">Additional Notes</h3>
-      <?!= reviewer_notes ?>
-    </div>
+      <div class="reviewer-notes">
+        <strong>Additional Notes:</strong>
+        <div><?!= reviewer_notes ?></div>
+      </div>
     <? } ?>
-
-
     <div class="footer">
       <p>Thank you,</p>
-      <p><strong>UCSC Construction Documents</strong><br>
-      1156 High Street, Barn G<br>
-      Physical Planning Development & Operations<br>
-      University of California, Santa Cruz<br>
-      constdoc@ucsc.edu<br>
-      (831) 459-5326</p>
+      <p>
+        <strong>UCSC Construction Documents</strong><br>
+        1156 High Street, Barn G<br>
+        Physical Planning Development & Operations<br>
+        University of California, Santa Cruz<br>
+        constdoc@ucsc.edu<br>
+        (831) 459-5326
+      </p>
     </div>
   </div>
 </body>
