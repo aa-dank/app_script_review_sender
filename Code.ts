@@ -39,6 +39,8 @@ const CONFIG: Config = {
   DEBUG_MODE: true
 };
 
+const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
+
 // Types and Interfaces
 /**
  * Represents a row of email distribution data from the spreadsheet
@@ -466,9 +468,21 @@ class EmailBuilder {
         const fileId = this.extractFileId(url);
         CustomLogger.debug(`Retrieving attachment for fileId: ${fileId}`);
         const file = DriveApp.getFileById(fileId);
+
+        // Proactive file size check
+        if (file.getSize() > MAX_ATTACHMENT_SIZE) {
+          CustomLogger.error(`Attachment too large for fileId: ${fileId}`, {
+            size: file.getSize(),
+            maxSize: MAX_ATTACHMENT_SIZE,
+            fileUrl: url
+          });
+          throw new Error(`Attachment file too large: ${fileId}`);
+        }
+        
         attachments.push(file.getBlob());
       } catch (error) {
         CustomLogger.error(`Error attaching file from URL ${url}`, error);
+        throw error;
       }
     }
 
