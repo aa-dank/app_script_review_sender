@@ -278,10 +278,15 @@ class EmailBuilder {
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
         let values = this.getTemplateValues();
         if (this.row.subject_template_value) {
-          values.subject_template_value = this.decodeHtmlEntities(this.row.subject_template_value);
+          // First decode any HTML entities in the template value
+          values.subject_template_value = this.decodeHtmlEntities(
+            // Pre-decode any already escaped ampersands
+            this.row.subject_template_value.replace(/&amp;/g, '&')
+          );
         }
         Object.assign(subjectTemplate, values);
-        const processedSubject = Utilities.htmlUnescape(subjectTemplate.evaluate().getContent().trim());
+        // Remove the htmlUnescape step as we're handling entities directly
+        const processedSubject = subjectTemplate.evaluate().getContent().trim();
         return processedSubject || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
         CustomLogger.error('Error building subject from template', error);
