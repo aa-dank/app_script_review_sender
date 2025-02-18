@@ -281,7 +281,7 @@ class EmailBuilder {
           values.subject_template_value = this.decodeHtmlEntities(this.row.subject_template_value);
         }
         Object.assign(subjectTemplate, values);
-        const processedSubject = subjectTemplate.evaluate().getContent().trim();
+        const processedSubject = Utilities.htmlUnescape(subjectTemplate.evaluate().getContent().trim());
         return processedSubject || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
         CustomLogger.error('Error building subject from template', error);

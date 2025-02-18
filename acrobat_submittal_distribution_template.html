@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Acrobat Submittal Notification</title>
+  <base target="_top">
+  <!-- Template Variables:
+       server_username: The username for Acrobat login.
+       server_password: The password for Acrobat login.
+       large_files_download_url: Optional URL if attachments exceed size limits.
+       reviewer_notes: Additional review or instruction notes.
+  -->
+  <style type="text/css">
+    body {
+      font-family: Arial, sans-serif;
+      color: #333;
+      line-height: 1.45;
+      margin: 0;
+      padding: 20px;
+      background-color: #f6f6f6;
+    }
+    .container {
+      max-width: 600px;
+      background: #fff;
+      margin: 30px auto;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .header {
+      border-bottom: 2px solid #005587;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      color: #005587;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 1.5em;
+    }
+    p {
+      margin: 0 0 1em;
+    }
+    .button {
+      display: inline-block;
+      text-decoration: none;
+      background-color: #005587;
+      color: #fff !important;
+      padding: 10px 16px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .notes, .credentials {
+      background-color: #f0fafc;
+      margin-top: 1em;
+      padding: 10px;
+      border-left: 4px solid #005587;
+    }
+    .footer {
+      margin-top: 20px;
+      font-size: 0.9em;
+      color: #666;
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Acrobat Submittal Notification</h1>
+    </div>
+    
+    <p>Attached is a submittal for your review.</p>
+    <p>
+      The submittal review procedure requires you to log into Adobe Acrobat (Version 11 or higher) 
+      to mark-up the document in collaboration with the reviewers.
+    </p>
+    
+    <div class="credentials">
+      <p><strong>Login Credentials:</strong></p>
+      <p>Username: <?!= server_username ?></p>
+      <p>Password: <?!= server_password ?></p>
+    </div>
+    
+    <? if (large_files_download_url) { ?>
+    <div class="content-section">
+      <p>Due to file size, the reviewed submittal is available for download using the following link:</p>
+      <p>
+        <a href="<?= large_files_download_url ?>" class="button">Download Review Documents</a>
+      </p>
+      <p>Files will be hosted for at least 30 days.</p>
+    </div>
+    <? } else { ?>
+      <p>Please find the reviewed submittal document(s) attached to this email.</p>
+    <? } ?>
+    
+    <? if (reviewer_notes) { ?>
+    <div class="notes">
+      <strong>Additional Reviewer Notes:</strong>
+      <div><?!= reviewer_notes ?></div>
+    </div>
+    <? } ?>
+    
+    <div class="footer">
+      <p>
+        <strong>UCSC Construction Documents</strong><br>
+        1156 High Street, Barn G<br>
+        Physical Planning Development & Operations<br>
+        University of California, Santa Cruz<br>
+        constdoc@ucsc.edu | (831) 459-5326
+      </p>
+    </div>
+  </div>
+</body>
+</html>

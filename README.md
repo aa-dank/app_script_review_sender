@@ -109,6 +109,7 @@ The script automatically maps spreadsheet columns to expected keys. Ensure your 
   
 3. **Run the Distribution:**  
    - You can manually run the `processEmailDistributions` function from the Apps Script console or use the custom menu added to the spreadsheet.
+   - After opening the spreadsheet, select **Email Distributions > Send Pending Emails** from the custom menu to trigger the email sending process.
 
 ---
 
