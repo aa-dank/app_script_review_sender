@@ -2,8 +2,20 @@
 <html>
 <head>
   <base target="_top">
-  <!-- Template Variables:
-       large_files_download_url: URL for downloading review documents when attachments exceed size limits.
+  <!-- 
+    Template Variables:
+    ------------------
+    large_files_download_url: URL for downloading review documents when attachments exceed size limits.
+                             When present, shows a special notice section with download button.
+                             When not present, shows a standard message about attachments.
+
+    How variables work:
+    -----------------
+    1. These values come from the 'template_values' JSON in the spreadsheet
+    2. The system uses Apps Script's HtmlService.createTemplate() to process variables
+    3. Variable substitution uses <?= variableName ?> syntax
+    4. Conditional sections use <? if (condition) { ?> content <? } ?> syntax
+    5. Variables that don't exist will render as empty strings (no errors)
   -->
   <style type="text/css">
     body {
@@ -52,6 +64,14 @@
       <h2>Submittal Review Response</h2>
     </div>
 
+    <!-- 
+      Conditional section based on large_files_download_url:
+      - If large_files_download_url is defined, show the download notice section
+      - Otherwise, show the standard message about attachments
+      
+      The if statement is processed by the HtmlService template engine
+      and only one section will be included in the final email.
+    -->
     <? if (large_files_download_url) { ?>
     <div class="notice">
       <p>Due to file size, the reviewed documents are available via the link below:</p>

@@ -13,7 +13,9 @@ enum SheetNames {
   /** Sheet containing pending email distributions */
   TO_SEND = 'distributions_to_send',
   /** Sheet containing record of sent distributions */
-  SENT_HISTORY = 'sent_history'
+  SENT_HISTORY = 'sent_history',
+  /** Sheet with sets of template values used to populate TO_SEND */
+  TEMPLATES = 'distribution_templates'
 }
 
 /**
@@ -41,6 +43,51 @@ const CONFIG: Config = {
 
 const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
 
+/**
+ * Enhanced logging utility
+ */
+class CustomLogger {
+  /**
+   * Logs a debug message if debug mode is enabled
+   * @param {string} message - Debug message
+   * @param {any} [data] - Optional data to include in the log
+   */
+  static debug(message: string, data?: any) {
+    if (CONFIG.DEBUG_MODE) {
+      Logger.log(`[DEBUG] ${message} ${data ? JSON.stringify(data) : ''}`);
+    }
+  }
+
+  /**
+   * Logs an error message with detailed error information
+   * @param {string} message - Error description
+   * @param {any} error - Error object or details
+   */
+  static error(message: string, error: any) {
+    Logger.log(`[ERROR] ${message}`);
+    
+    // Handle different error formats
+    const errorDetails = error instanceof Error 
+      ? {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+          toString: error.toString()
+        }
+      : error;
+    
+    Logger.log('Error details:' + JSON.stringify(errorDetails));
+  }
+
+  /**
+   * Logs an info message regardless of debug mode
+   * @param {string} message - Info message
+   */
+  static info(message: string) {
+    Logger.log(`[INFO] ${message}`);
+  }
+}
+
 // Types and Interfaces
 /**
  * Represents a row of email distribution data from the spreadsheet
@@ -62,6 +109,8 @@ interface EmailRow {
   /** Custom subject line for the email */
   email_subject_template: string;
   subject_template_value: string;
+  /** Template label to identify which distribution template to use */
+  template_label: string;
   /** Allow for additional dynamic columns */
   [key: string]: string; // Allow additional columns
 }
@@ -76,117 +125,419 @@ interface TemplateValues {
 }
 
 /**
- * Main processor class for handling email distributions
- * Manages spreadsheet operations and coordinates email sending process
+ * Utility class for spreadsheet operations
  */
-class EmailProcessor {
-  private spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
-  private sourceSheet: GoogleAppsScript.Spreadsheet.Sheet;
-  private historySheet: GoogleAppsScript.Spreadsheet.Sheet;
-
-  constructor() {
-    this.spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    this.sourceSheet = this.spreadsheet.getSheetByName(SheetNames.TO_SEND);
-    this.historySheet = this.getOrCreateHistorySheet();
-  }
-
+class SpreadsheetUtils {
   /**
-   * Creates or retrieves the history sheet for tracking sent distributions
-   * @returns {GoogleAppsScript.Spreadsheet.Sheet} The history sheet
-   * @private
+   * Maps headers from a sheet to their column indices
+   * @param {any[]} headerRow - First row of a sheet containing header names
+   * @returns {Object} Map of header names to their column indices
    */
-  private getOrCreateHistorySheet(): GoogleAppsScript.Spreadsheet.Sheet {
-    let historySheet = this.spreadsheet.getSheetByName(SheetNames.SENT_HISTORY);
-    if (!historySheet) {
-      historySheet = this.spreadsheet.insertSheet(SheetNames.SENT_HISTORY);
-      const headers = [
-        ...Object.keys(this.getHeaders()),
-        'datetime'
-      ];
-      historySheet.appendRow(headers);
-    }
-    return historySheet;
-  }
-
-  private getHeaders(): { [key: string]: number } {
-    const headers = this.sourceSheet.getRange(1, 1, 1, this.sourceSheet.getLastColumn()).getValues()[0];
-    return headers.reduce((acc: { [key: string]: number }, header: string, index: number) => {
+  static mapHeadersToIndices(headerRow: any[]): { [key: string]: number } {
+    return headerRow.reduce((acc: { [key: string]: number }, header: string, index: number) => {
       acc[header] = index;
       return acc;
     }, {});
   }
 
   /**
-   * Processes all pending email distributions in the spreadsheet
-   * @returns {Promise<void>}
-   * @public
+   * Gets or creates a sheet in the spreadsheet
+   * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The spreadsheet
+   * @param {string} sheetName - Name of the sheet to get or create
+   * @param {string[]} [headers] - Optional headers to add if the sheet is created
+   * @returns {GoogleAppsScript.Spreadsheet.Sheet} The sheet
    */
-  public async sendEmails(): Promise<void> {
-    const data = this.sourceSheet.getDataRange().getValues();
-    const headers = this.getHeaders();
-
-    // Process rows in reverse order
-    for (let i = data.length - 1; i >= 1; i--) {
-      const row = this.mapRowToEmailRow(data[i], headers);
-      
-      try {
-        if (await this.processRow(row)) {
-          CustomLogger.debug(`Row ${i + 1} processed successfully. Moving to history.`);
-          this.moveRowToHistory(i + 1, data[i]);
-        } else {
-          CustomLogger.debug(`Row ${i + 1} skipped due to validation or processing failure.`);
-        }
-      } catch (error) {
-        CustomLogger.error(`Error processing row ${i + 1}`, error);
+  static getOrCreateSheet(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet, sheetName: string, headers?: string[]): GoogleAppsScript.Spreadsheet.Sheet {
+    let sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = spreadsheet.insertSheet(sheetName);
+      if (headers && headers.length > 0) {
+        sheet.appendRow(headers);
+        CustomLogger.debug(`Created sheet ${sheetName} with headers`);
       }
+    }
+    return sheet;
+  }
+
+  /**
+   * Ensures a column exists in a sheet
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet to check
+   * @param {string} columnName - The column name to look for
+   * @returns {boolean} True if the column was added, false if it already existed
+   */
+  static ensureColumnExists(sheet: GoogleAppsScript.Spreadsheet.Sheet, columnName: string): boolean {
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (!headers.includes(columnName)) {
+      const newColIndex = headers.length + 1;
+      sheet.getRange(1, newColIndex).setValue(columnName);
+      CustomLogger.debug(`Added ${columnName} column to ${sheet.getName()} sheet`);
+      return true;
+    }
+    CustomLogger.debug(`${columnName} column already exists in ${sheet.getName()} sheet`);
+    return false;
+  }
+
+  /**
+   * Maps a data row to an object using header indices
+   * @param {any[]} row - The data row
+   * @param {{ [key: string]: number }} headers - Map of header names to column indices
+   * @param {string[]} requiredFields - Fields that should always exist in the result
+   * @returns {Object} Object with header names as keys and row values as values
+   */
+  static mapRowToObject(row: any[], headers: { [key: string]: number }, requiredFields: string[]): { [key: string]: any } {
+    const result: { [key: string]: any } = {};
+    
+    // Add required fields first to ensure they exist
+    for (const field of requiredFields) {
+      result[field] = headers[field] !== undefined ? row[headers[field]] || '' : '';
+    }
+    
+    // Add any additional columns from the row data
+    for (const header in headers) {
+      if (!Object.prototype.hasOwnProperty.call(result, header)) {
+        result[header] = row[headers[header]] || '';
+      }
+    }
+    
+    return result;
+  }
+}
+
+/**
+ * Utility class for file operations
+ */
+class FileUtils {
+  /**
+   * Extracts a file ID from a Google Drive URL
+   * @param {string} url - Google Drive URL
+   * @returns {string} The extracted file ID
+   * @throws {Error} If the URL is invalid or file ID cannot be extracted
+   */
+  static extractFileId(url: string): string {
+    const match = url.match(/[-\w]{25,}/);
+    if (!match?.[0]) {
+      throw new Error(`Invalid Google Drive URL: ${url}`);
+    }
+    return match[0];
+  }
+
+  /**
+   * Gets file content from a Google Drive file URL
+   * @param {string} url - Google Drive URL
+   * @returns {string} The file content as string
+   */
+  static getFileContentFromUrl(url: string): string {
+    const fileId = this.extractFileId(url);
+    CustomLogger.debug(`Retrieving content for fileId: ${fileId}`);
+    
+    const file = DriveApp.getFileById(fileId);
+    const content = file.getBlob().getDataAsString();
+    
+    CustomLogger.debug(`Content retrieved (first 100 chars): ${content.substring(0, 100)}`);
+    return content;
+  }
+
+  /**
+   * Checks if a file exceeds the maximum allowed size
+   * @param {string} fileId - Google Drive file ID
+   * @param {number} maxSize - Maximum allowed size in bytes
+   * @returns {boolean} True if file exceeds the size limit
+   */
+  static isFileTooLarge(fileId: string, maxSize: number): boolean {
+    const file = DriveApp.getFileById(fileId);
+    return file.getSize() > maxSize;
+  }
+
+  /**
+   * Gets file as a blob from its Google Drive ID
+   * @param {string} fileId - Google Drive file ID
+   * @returns {GoogleAppsScript.Base.Blob} The file blob
+   */
+  static getFileBlob(fileId: string): GoogleAppsScript.Base.Blob {
+    return DriveApp.getFileById(fileId).getBlob();
+  }
+
+  /**
+   * Moves a file to trash
+   * @param {string} fileId - Google Drive file ID
+   * @returns {boolean} True if successful
+   */
+  static trashFile(fileId: string): boolean {
+    try {
+      DriveApp.getFileById(fileId).setTrashed(true);
+      return true;
+    } catch (error) {
+      CustomLogger.error(`Error trashing file: ${fileId}`, error);
+      return false;
     }
   }
 
   /**
-   * Maps a raw data row to a typed EmailRow object
-   * @param {any[]} row - Raw spreadsheet row data
-   * @param {{ [key: string]: number }} headers - Map of header names to column indices
-   * @returns {EmailRow} Typed email row object
-   * @private
+   * Gets file metadata for debugging purposes
+   * @param {string} fileId - Google Drive file ID
+   * @returns {object} File metadata
    */
-  private mapRowToEmailRow(row: any[], headers: { [key: string]: number }): EmailRow {
-    return {
-      distribution_emails: row[headers['distribution_emails']] || '',
-      additional_emails: row[headers['additional_emails']] || '',
-      revu_session_invite: row[headers['revu_session_invite']] || '',
-      template_values: row[headers['template_values']] || '',  // Changed mapping here
-      email_body_template: row[headers['email_body_template']] || '',
-      attachments_urls: row[headers['attachments_urls']] || '',  // Changed mapping here
-      email_subject_template: row[headers['email_subject_template']] || '',
-      subject_template_value: row[headers['subject_template_value']] || ''
-    };
+  static getFileMetadata(fileId: string): Record<string, any> {
+    try {
+      const file = DriveApp.getFileById(fileId);
+      return {
+        id: file.getId(),
+        name: file.getName(),
+        owner: file.getOwner() ? file.getOwner().getEmail() : 'Unknown',
+        sharingAccess: file.getSharingAccess(),
+        size: file.getSize()
+      };
+    } catch (error) {
+      return { id: fileId, error: error.toString() };
+    }
   }
+}
 
-  private async processRow(row: EmailRow): Promise<boolean> {
-    if (!this.validateRow(row)) {
-      return false;
+/**
+ * Utility class for email operations
+ */
+class EmailUtils {
+  /**
+   * Parses email addresses from text, handling both standard format and 'at'/'dot' notation
+   * 
+   * This method handles various formats of email addresses, including:
+   * - Standard email addresses (user@example.com)
+   * - Email addresses with 'at' notation (user at example.com)
+   * - Email addresses with 'dot' notation (user@example dot com)
+   * - Combined formats (user at example dot com)
+   * 
+   * It also filters out lines that start with '//' to prevent matching URLs or comments.
+   * 
+   * The regex matches email local parts that can contain:
+   * - Alphanumeric characters
+   * - Special characters: !#$%&'*+/=?^_`{|}~-
+   * - Dots between parts
+   * 
+   * Followed by @ or " at " (case insensitive), followed by:
+   * - Domain name parts (with - allowed within parts)
+   * - Dots or " dot " between parts
+   * 
+   * @param {string} input - Text containing email addresses in various formats
+   * @returns {string[]} Array of extracted and normalized email addresses
+   * @example
+   * // Returns: ["john.doe@example.com", "jane.smith@company.org"]
+   * EmailUtils.parseEmailAddresses("Contact: john.doe@example.com or jane.smith at company dot org");
+   */
+  static parseEmailAddresses(input: string): string[] {
+    if (!input) return [];
+    
+    // Remove comment lines starting with '//' to avoid matching URLs
+    const cleanInput = input.replace(/^\/\/.*/gm, '').toLowerCase();
+    
+    // Complex regex to match various email formats
+    const emailRegex = /([a-z0-9!#$%&'*+\/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+\/=?^_`{|}~-]+)*(@|\s+at\s+)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(\.|\s+dot\s+))+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/gi;
+
+    const matches: string[] = [];
+    let match: RegExpExecArray | null;
+    
+    while ((match = emailRegex.exec(cleanInput)) !== null) {
+      if (!match[0].startsWith('//')) {
+        // Replace ' at ' with '@' and ' dot ' with '.' to normalize the email format
+        const email = match[0].replace(/\s+(at|dot)\s+/g, (m, p1) => 
+          p1 === 'at' ? '@' : '.'
+        );
+        matches.push(email);
+      }
     }
 
-    const emailProcessor = new EmailBuilder(row);
-    return await emailProcessor.sendEmail();
+    return matches;
   }
 
-  private validateRow(row: EmailRow): boolean {
-    if (!row.distribution_emails && !row.additional_emails) {
-      CustomLogger.debug('No recipient email addresses provided.');
-      return false;
+  /**
+   * Extracts Bluebeam session ID from text using regex pattern matching
+   * 
+   * This method searches for and extracts Bluebeam session IDs from text.
+   * A valid session ID follows the pattern: three digits, hyphen, three digits, hyphen, three digits.
+   * Example: 123-456-789
+   * 
+   * Notes on the session ID extraction process:
+   * - The regex looks for the specific pattern \b\d{3}-\d{3}-\d{3}\b
+   * - \b ensures we're matching whole word boundaries (not part of a larger number)
+   * - If multiple session IDs are found, the first one is used
+   * - If no valid session ID is found, null is returned
+   * - Detailed logs are generated to aid debugging of session ID extraction issues
+   * 
+   * @param {string} text - Text containing a Bluebeam session ID
+   * @returns {string | null} Session ID or null if not found
+   * @example
+   * // Returns: "123-456-789"
+   * EmailUtils.parseSessionId("Please join session 123-456-789 for the review");
+   * 
+   * // Returns: null
+   * EmailUtils.parseSessionId("No valid session ID in this text");
+   */
+  static parseSessionId(text: string): string | null {
+    if (!text) return null;
+
+    // Regular expression to match session IDs in the format '123-456-789'
+    const sessionIdRegex = /\b\d{3}-\d{3}-\d{3}\b/;
+    const matches = text.match(sessionIdRegex);
+
+    if (!matches) {
+      CustomLogger.debug(`No Bluebeam Session ID found in the text: ${text}`);
+      return null;
     }
-    if (!row.email_body_template) {
-      CustomLogger.debug('No email template URL provided.');
-      return false;
+
+    // Filter out any falsy values from matches
+    const ids = matches.filter(Boolean);
+    CustomLogger.debug(`Found session IDs: ${ids.join(', ')}`);
+
+    if (ids.length > 1) {
+      CustomLogger.debug(`Multiple different session IDs found in the text: ${text}\n Using first match.`);
     }
-    return true;
+
+    return ids[0] || null;
   }
 
-  private moveRowToHistory(rowIndex: number, rowData: any[]): void {
-    const rowWithTimestamp = [...rowData, new Date()];
-    this.historySheet.appendRow(rowWithTimestamp);
-    this.sourceSheet.deleteRow(rowIndex);
+  /**
+   * Combines email addresses from multiple sources and removes duplicates
+   * 
+   * This method:
+   * 1. Takes multiple input strings that may contain email addresses
+   * 2. Parses each input to extract valid email addresses
+   * 3. Combines all found email addresses into a single collection
+   * 4. Removes duplicates and filters out any empty/invalid entries
+   * 5. Joins valid addresses with commas for use in email sending
+   * 
+   * @param {string[]} sources - Array of strings containing email addresses
+   * @returns {string | null} Comma-separated email list or null if none found
+   * @example
+   * // Returns: "user1@example.com,user2@example.com,user3@example.com"
+   * EmailUtils.combineEmailAddresses(
+   *   "user1@example.com, user2@example.com",
+   *   "user2@example.com, user3@example.com"
+   * );
+   */
+  static combineEmailAddresses(...sources: string[]): string | null {
+    const allEmails: string[] = [];
+    
+    for (const source of sources) {
+      if (source) {
+        allEmails.push(...this.parseEmailAddresses(source));
+      }
+    }
+
+    const uniqueEmails = [...new Set(allEmails.filter(Boolean))];
+    return uniqueEmails.length > 0 ? uniqueEmails.join(',') : null;
+  }
+
+  /**
+   * Sends an email using Gmail service
+   * @param {string} recipients - Comma-separated recipient email addresses
+   * @param {string} subject - Email subject
+   * @param {string} htmlBody - HTML content for email body
+   * @param {GoogleAppsScript.Base.Blob[]} attachments - Email attachments
+   * @param {string} fromEmail - Sender email address
+   * @returns {boolean} True if email sent successfully
+   */
+  static sendEmail(
+    recipients: string, 
+    subject: string, 
+    htmlBody: string, 
+    attachments: GoogleAppsScript.Base.Blob[] = [],
+    fromEmail: string = CONFIG.FROM_EMAIL
+  ): boolean {
+    CustomLogger.debug(`Sending email to: ${recipients}, Subject: ${subject}, Attachments: ${attachments.length}`);
+    
+    try {
+      GmailApp.sendEmail(recipients, subject, '', {
+        htmlBody,
+        attachments,
+        from: fromEmail
+      });
+      CustomLogger.debug('Email sent successfully');
+      return true;
+    } catch (error) {
+      CustomLogger.error('Error sending email', error);
+      return false;
+    }
+  }
+}
+
+/**
+ * Utility class for text processing
+ */
+class TextUtils {
+  /**
+   * Decodes HTML entities to their corresponding characters
+   * @param {string} text - Text with HTML entities
+   * @returns {string} Decoded text
+   */
+  static decodeHtmlEntities(text: string): string {
+    if (!text) return text;
+    return text
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
+  /**
+   * Sanitizes and formats JSON text from spreadsheet cells for use in templates
+   * 
+   * This method handles several common issues with JSON stored in spreadsheet cells:
+   * 1. Removes extra escaping that occurs when JSON is pasted into cells
+   * 2. Handles newlines that might break JSON parsing
+   * 3. Ensures proper JSON structure with curly braces
+   * 4. Validates JSON structure through parse/stringify cycle
+   * 
+   * Common input issues addressed:
+   * - Double-escaped quotes (e.g., \\" instead of ")
+   * - Missing outer curly braces
+   * - Line breaks in JSON text
+   * - Inconsistent formatting
+   * 
+   * @param {string} text - Potentially invalid or malformed JSON text from spreadsheet
+   * @returns {string} Valid, properly formatted JSON string or '{}' if input cannot be parsed
+   * @example
+   * // Returns: {"name":"John","age":"30"}
+   * TextUtils.sanitizeJsonText('name: "John", age: "30"');
+   * 
+   * // Returns: {"project":"Building A","status":"In Progress"}
+   * TextUtils.sanitizeJsonText('{"project":"Building A",\n"status":"In Progress"}');
+   */
+  static sanitizeJsonText(text: string): string {
+    if (!text) return text;
+    
+    try {
+      // Remove extra escaping
+      let cleaned = text
+        .replace(/\\"/g, '"')     // Remove escaped quotes
+        .replace(/\\\\/g, '\\')   // Remove double escapes
+        .replace(/\r?\n/g, ' ')   // Replace newlines with spaces
+        .trim();                  // Remove extra whitespace
+        
+      // If it's not wrapped in curly braces, wrap it
+      if (!cleaned.startsWith('{')) cleaned = '{' + cleaned;
+      if (!cleaned.endsWith('}')) cleaned = cleaned + '}';
+      
+      // Validate by parsing and re-stringifying
+      const parsed = JSON.parse(cleaned);
+      return JSON.stringify(parsed);
+    } catch (error) {
+      CustomLogger.error('Error sanitizing JSON text', error);
+      return '{}';
+    }
+  }
+
+  /**
+   * Gets a string value safely from an array using a header map
+   * @param {any[]} row - Row data array
+   * @param {{ [key: string]: number }} headerMap - Map of headers to indices
+   * @param {string} headerName - The header name to get value for
+   * @returns {string} The value as string or empty string if not found
+   */
+  static getStringValue(row: any[], headerMap: { [key: string]: number }, headerName: string): string {
+    if (headerMap[headerName] === undefined || row[headerMap[headerName]] === undefined) {
+      return '';
+    }
+    return String(row[headerMap[headerName]] || '');
   }
 }
 
@@ -201,24 +552,37 @@ class EmailBuilder {
    */
   constructor(private row: EmailRow) {}
 
-  public async sendEmail(): Promise<boolean> {
-    const recipients = this.compileEmailAddresses();
+  /**
+   * Sends an email based on the row data
+   * @returns {boolean} True if email was sent successfully
+   */
+  public sendEmail(): boolean {
+    // Get recipients
+    const recipients = EmailUtils.combineEmailAddresses(
+      this.row.distribution_emails,
+      this.row.additional_emails
+    );
+    
     if (!recipients) {
       CustomLogger.debug('No valid email addresses found.');
       return false;
     }
 
-    const emailBody = await this.buildEmailBody();
+    // Generate email body
+    const emailBody = this.buildEmailBody();
     if (!emailBody) {
       CustomLogger.debug('Email body could not be generated.');
       return false;
     }
 
-    const attachments = await this.getAttachments();
+    // Get attachments
+    const attachments = this.getAttachments();
+    
+    // Get final subject
     const subject = this.getFinalSubject();
 
     // Send email; if successful, trash the attachments.
-    const sent = this.sendEmailViaGmail(recipients, emailBody, attachments, subject);
+    const sent = EmailUtils.sendEmail(recipients, subject, emailBody, attachments);
     if (sent) {
       this.trashAttachments();
     }
@@ -226,67 +590,58 @@ class EmailBuilder {
   }
 
   /**
-   * Trashes all files specified in the attachments_urls column.
-   * Now logs extra debug info if an error occurs.
+   * Trashes all files specified in the attachments_urls column
+   * This helps manage Drive storage by removing files that have already been sent
+   * @private
    */
   private trashAttachments(): void {
     if (!this.row.attachments_urls) return;
+    
     const fileUrls = this.row.attachments_urls.split(/[,;]+/).map(url => url.trim());
     for (const url of fileUrls) {
       try {
-        const fileId = this.extractFileId(url);
+        const fileId = FileUtils.extractFileId(url);
         CustomLogger.debug(`Trashing file with fileId: ${fileId}`);
-        DriveApp.getFileById(fileId).setTrashed(true);
+        FileUtils.trashFile(fileId);
       } catch (error) {
-        // Attempt to retrieve extra file metadata for debugging
+        // Get file metadata for better error logging
         let fileInfo: Record<string, any> = {};
         try {
-          const file = DriveApp.getFileById(this.extractFileId(url));
-          fileInfo = {
-            id: file.getId(),
-            name: file.getName(),
-            owner: file.getOwner() ? file.getOwner().getEmail() : 'Unknown',
-            sharingAccess: file.getSharingAccess()
-          };
+          const fileId = FileUtils.extractFileId(url);
+          fileInfo = FileUtils.getFileMetadata(fileId);
         } catch (subError) {
-          fileInfo = { id: this.extractFileId(url), error: subError.toString() };
+          fileInfo = { url, error: subError.toString() };
         }
-        CustomLogger.error(`Error trashing file from URL ${url}. File info: ${JSON.stringify(fileInfo)}`, error);
+        CustomLogger.error(`Error trashing file from URL ${url}`, { fileInfo, error });
       }
     }
   }
 
-  // Use this function to decode HTML entities such that they are displayed correctly in the email
-  private decodeHtmlEntities(text: string): string {
-    if (!text) return text;
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-  }
-
   /**
-   * Generates the final email subject by processing the subject template.
-   * Uses the email_subject_template column exclusively,
-   * falling back to CONFIG.DEFAULT_SUBJECT if empty.
+   * Generates the final email subject by processing the subject template
+   * 
+   * This method handles dynamic subject generation from templates. It works by:
+   * 1. Taking the subject template from the row data
+   * 2. Creating an Apps Script HTML template from the content
+   * 3. Applying the template values to the template
+   * 4. Evaluating the template to generate the final subject
+   * 5. Decoding any HTML entities in the result
+   * 
+   * If any errors occur during this process, it falls back to the default subject
+   * defined in the global configuration.
+   * 
+   * @returns {string} Final processed subject line for the email
+   * @private
    */
   private getFinalSubject(): string {
     if (this.row.email_subject_template) {
       try {
         const subjectTemplate = HtmlService.createTemplate(this.row.email_subject_template);
-        let values = this.getTemplateValues();
-        if (this.row.subject_template_value) {
-          // First decode any HTML entities in the template value
-          values.subject_template_value = this.decodeHtmlEntities(
-            // Pre-decode any already escaped ampersands
-            this.row.subject_template_value.replace(/&amp;/g, '&')
-          );
-        }
+        const values = this.getTemplateValues();
         Object.assign(subjectTemplate, values);
-        // Remove the htmlUnescape step as we're handling entities directly
-        const processedSubject = subjectTemplate.evaluate().getContent().trim();
+        
+        let processedSubject = subjectTemplate.evaluate().getContent().trim();
+        processedSubject = TextUtils.decodeHtmlEntities(processedSubject);
         return processedSubject || CONFIG.DEFAULT_SUBJECT;
       } catch (error) {
         CustomLogger.error('Error building subject from template', error);
@@ -297,60 +652,37 @@ class EmailBuilder {
   }
 
   /**
-   * Compiles and validates email addresses from distribution and additional emails
-   * @returns {string | null} Comma-separated list of valid email addresses or null if none found
-   * @private
-   */
-  private compileEmailAddresses(): string | null {
-    const emails = [
-      ...this.parseEmails(this.row.distribution_emails),
-      ...this.parseEmails(this.row.additional_emails)
-    ];
-
-    const uniqueEmails = [...new Set(emails.filter(Boolean))];
-    return uniqueEmails.length > 0 ? uniqueEmails.join(',') : null;
-  }
-
-  /**
-   * Extracts email addresses from a string, handling various formats including 'at' and 'dot' notation
-   * @param {string} input - Raw string containing email addresses
-   * @returns {string[]} Array of valid email addresses
-   * @private
-   */
-  private parseEmails(input: string): string[] {
-    if (!input) return [];
-    
-    const cleanInput = input.replace(/^\/\/.*/gm, '').toLowerCase();
-    const emailRegex = /([a-z0-9!#$%&'*+\/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+\/=?^_`{|}~-]+)*(@|\s+at\s+)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(\.|\s+dot\s+))+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/gi;
-
-    const matches: string[] = [];
-    let match: RegExpExecArray | null;
-    
-    while ((match = emailRegex.exec(cleanInput)) !== null) {
-      if (!match[0].startsWith('//')) {
-        const email = match[0].replace(/\s+(at|dot)\s+/g, (m, p1) => 
-          p1 === 'at' ? '@' : '.'
-        );
-        matches.push(email);
-      }
-    }
-
-    return matches;
-  }
-
-  /**
    * Creates the email body by applying template values to the HTML template
-   * @returns {Promise<string | null>} Processed HTML email body or null if error occurs
+   * 
+   * This method handles the dynamic generation of HTML email content. The process works as follows:
+   * 1. Retrieves the HTML template content from Google Drive using the file URL in the row
+   * 2. Gets all template values from the row's template_values JSON and any special fields
+   * 3. Creates an Apps Script HTML template from the content
+   * 4. Assigns all template values to the template object
+   * 5. Evaluates the template, which processes all dynamic content markers (<?= varName ?>)
+   *    and scriptlets (<? if (condition) { ?> content <? } ?>)
+   * 
+   * Note: The HTML template supports both simple variable substitution (<?= varName ?>)
+   * and scriptlet conditionals/loops (<? if (condition) { ?> content <? } ?>)
+   * 
+   * @returns {string | null} Processed HTML email body or null if error occurs
    * @private
+   * @see https://developers.google.com/apps-script/guides/html/templates
    */
-  private async buildEmailBody(): Promise<string | null> {
+  private buildEmailBody(): string | null {
     try {
-      const templateContent = await this.getTemplateContent();
+      // Get template content and values
+      const templateContent = FileUtils.getFileContentFromUrl(this.row.email_body_template);
       const values = this.getTemplateValues();
       
+      // Apply template values to the HTML template
       const htmlTemplate = HtmlService.createTemplate(templateContent);
+      
+      // Assign all template values to the template
       Object.assign(htmlTemplate, values);
       
+      // Evaluate the template - this processes all <?= varName ?> markers
+      // and scriptlets (<? if (condition) { ?> content <? } ?>)
       return htmlTemplate.evaluate().getContent();
     } catch (error) {
       CustomLogger.error('Error building email body', error);
@@ -359,39 +691,38 @@ class EmailBuilder {
   }
 
   /**
-   * Retrieves the HTML template content from Google Drive
-   * Takes the email_body_template URL, extracts the file ID,
-   * and fetches the content as a string.
-   * @returns {Promise<string>} The HTML template content
-   * @throws {Error} If template file cannot be accessed or is invalid
+   * Retrieves and returns the template values for the email body and subject
+   * 
+   * This method performs several important steps to prepare values for template processing:
+   * 1. Sanitizes the JSON from template_values to handle common formatting issues
+   * 2. Parses the sanitized JSON into a JavaScript object
+   * 3. Extracts a Bluebeam session ID from revu_session_invite if available
+   * 4. Merges all values into a single object that can be applied to templates
+   * 
+   * Special handling:
+   * - The special 'sessionId' value is automatically extracted from revu_session_invite
+   * - Template values are sanitized to handle malformed JSON (missing brackets, quotes, etc.)
+   * - If JSON parsing fails, an empty object is used as a fallback
+   * 
+   * @returns {TemplateValues} Object containing all values to be used in templates
    * @private
-   */
-  private async getTemplateContent(): Promise<string> {
-    // Extract the Google Drive file ID from the template URL
-    const fileId = this.extractFileId(this.row.email_body_template);
-    CustomLogger.debug(`Retrieving template content for fileId: ${fileId}`);
-    
-    // Get the template file from Google Drive
-    const templateFile = DriveApp.getFileById(fileId);
-    
-    // Convert the file content to a string and return
-    const content = templateFile.getBlob().getDataAsString();
-    CustomLogger.debug(`Template content retrieved (first 100 chars): ${content.substring(0, 100)}`);
-    return content;
-  }
-
-  /**
-   * Retrieves and returns the template values for the email body, 
-   * including any Bluebeam session ID if found.
-   * @returns {TemplateValues} Parsed template values from row data
+   * @example
+   * // If template_values contains: {"project":"Building A","pm":"John Doe"}
+   * // And revu_session_invite contains: "Session ID: 123-456-789"
+   * // Then getTemplateValues returns:
+   * // {
+   * //   "project": "Building A",
+   * //   "pm": "John Doe",
+   * //   "sessionId": "123-456-789"
+   * // }
    */
   private getTemplateValues(): TemplateValues {
     // Sanitize JSON before parsing
-    const sanitized = this.sanitizeJsonText(this.row.template_values); // Changed property name here
+    const sanitized = TextUtils.sanitizeJsonText(this.row.template_values);
     const values = sanitized ? JSON.parse(sanitized) : {};
     
     // Parse the session ID from revu_session_invite, if present
-    const sessionId = this.parseSessionId(this.row.revu_session_invite);
+    const sessionId = EmailUtils.parseSessionId(this.row.revu_session_invite);
     if (sessionId) {
       values.sessionId = sessionId;
     }
@@ -399,284 +730,215 @@ class EmailBuilder {
   }
 
   /**
-   * Sanitizes JSON text by escaping problematic characters.
-   */
-  private sanitizeJsonText(text: string): string {
-    if (!text) return text;
-    
-    // Remove extra escaping
-    let cleaned = text
-      .replace(/\\"/g, '"')     // Remove escaped quotes
-      .replace(/\\\\/g, '\\')   // Remove double escapes
-      .replace(/\r?\n/g, ' ')   // Replace newlines with spaces
-      .trim();                  // Remove extra whitespace
-      
-    // If it's not wrapped in curly braces, wrap it
-    if (!cleaned.startsWith('{')) cleaned = '{' + cleaned;
-    if (!cleaned.endsWith('}')) cleaned = cleaned + '}';
-    
-    return cleaned;
-  }
-
-  /**
-   * Extracts a Bluebeam session ID from the provided text.
-   * The session ID is expected to be in the format '123-456-789'.
-   * If multiple session IDs are found, the first one is used.
-   * @param {string} text - Text containing the session ID
-   * @returns {string | null} Extracted session ID or null if not found
-   * @private
-   */
-  private parseSessionId(text: string): string | null {
-    if (!text) return null;
-
-    // Regular expression to match session IDs in the format '123-456-789'
-    const sessionIdRegex = /\b\d{3}-\d{3}-\d{3}\b/;
-    const matches = text.match(sessionIdRegex);
-
-    if (!matches) {
-      // Log if no session ID is found
-      CustomLogger.debug(`No Bluebeam Session ID found in the text: ${text}`);
-      return null;
-    }
-
-    // Filter out any falsy values from matches
-    const ids = matches.filter(Boolean);
-    CustomLogger.debug(`Found session IDs: ${ids.join(', ')}`);
-
-    if (ids.length > 1) {
-      // Log if multiple session IDs are found and indicate using the first match
-      CustomLogger.debug(`Multiple different session IDs found in the text: ${text}\n Using first match.`);
-    }
-
-    // Return the first session ID found or null if none
-    return ids[0] || null;
-  }
-
-  /**
    * Retrieves file attachments from Google Drive URLs
-   * @returns {Promise<GoogleAppsScript.Base.Blob[]>} Array of file blobs to attach
+   * @returns {GoogleAppsScript.Base.Blob[]} Array of file blobs to attach
    * @private
    */
-  private async getAttachments(): Promise<GoogleAppsScript.Base.Blob[]> {
-    if (!this.row.attachments_urls) {  // Changed property name here
+  private getAttachments(): GoogleAppsScript.Base.Blob[] {
+    if (!this.row.attachments_urls) {
       CustomLogger.debug('No attachments provided.');
       return [];
     }
 
-    const fileUrls = this.row.attachments_urls.split(/[,;]+/).map(url => url.trim()); // Using updated property
+    const fileUrls = this.row.attachments_urls.split(/[,;]+/).map(url => url.trim());
     CustomLogger.debug(`Processing ${fileUrls.length} attachment(s).`);
     
     const attachments: GoogleAppsScript.Base.Blob[] = [];
 
     for (const url of fileUrls) {
       try {
-        const fileId = this.extractFileId(url);
+        const fileId = FileUtils.extractFileId(url);
         CustomLogger.debug(`Retrieving attachment for fileId: ${fileId}`);
-        const file = DriveApp.getFileById(fileId);
-
-        // Proactive file size check
-        if (file.getSize() > MAX_ATTACHMENT_SIZE) {
-          CustomLogger.error(`Attachment too large for fileId: ${fileId}`, {
-            size: file.getSize(),
-            maxSize: MAX_ATTACHMENT_SIZE,
-            fileUrl: url
+        
+        // Check file size before attaching
+        if (FileUtils.isFileTooLarge(fileId, MAX_ATTACHMENT_SIZE)) {
+          const fileInfo = FileUtils.getFileMetadata(fileId);
+          CustomLogger.error(`Attachment too large`, {
+            fileId,
+            size: fileInfo.size,
+            maxSize: MAX_ATTACHMENT_SIZE
           });
           throw new Error(`Attachment file too large: ${fileId}`);
         }
         
-        attachments.push(file.getBlob());
+        attachments.push(FileUtils.getFileBlob(fileId));
       } catch (error) {
         CustomLogger.error(`Error attaching file from URL ${url}`, error);
-        throw error;
+        throw error; // Re-throw to prevent sending email with missing attachments
       }
     }
 
     CustomLogger.debug(`Total attachments retrieved: ${attachments.length}`);
     return attachments;
   }
+}
 
-  private extractFileId(url: string): string {
-    const match = url.match(/[-\w]{25,}/);
-    if (!match?.[0]) {
-      throw new Error(`Invalid Google Drive URL: ${url}`);
-    }
-    return match[0];
+/**
+ * Manages template data from the distribution_templates sheet
+ * Used to populate default values for rows in the distribution_to_send sheet
+ * 
+ * The TemplateManager provides a template system that allows users to define reusable
+ * email configurations in a separate sheet and apply them to multiple distributions.
+ * This reduces duplication and ensures consistency across similar email distributions.
+ */
+class TemplateManager {
+  private templatesSheet: GoogleAppsScript.Spreadsheet.Sheet;
+  private templateData: any[][] = [];
+  private headerMap: { [key: string]: number } = {};
+  private templateLabelIndex: { [label: string]: number } = {};
+
+  /**
+   * Creates a new TemplateManager instance
+   * 
+   * During initialization, the manager:
+   * 1. Gets or creates the distribution_templates sheet
+   * 2. Loads all template data from the sheet
+   * 3. Creates an index of templates by their labels for fast lookup
+   * 
+   * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The spreadsheet containing template data
+   */
+  constructor(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet) {
+    // Get or create the templates sheet
+    this.templatesSheet = this.getOrCreateTemplatesSheet(spreadsheet);
+    this.loadTemplateData();
   }
 
   /**
-   * Sends the email using Gmail service
-   * @param {string} recipients - Comma-separated list of recipient email addresses
-   * @param {string} htmlBody - HTML content of the email
-   * @param {GoogleAppsScript.Base.Blob[]} attachments - Array of file attachments
-   * @param {string} subject - Subject of the email
-   * @returns {boolean} True if email was sent successfully
+   * Gets or creates the distribution_templates sheet
+   * 
+   * This method ensures the templates sheet exists with appropriate headers.
+   * If the sheet doesn't exist, it creates a new one with either:
+   * - The same headers as the distributions_to_send sheet (if it exists)
+   * - Default headers for essential fields (if the TO_SEND sheet doesn't exist)
+   * 
+   * In both cases, it ensures that 'template_label' column exists since this
+   * is the key field used for template identification.
+   * 
+   * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The spreadsheet to work with
+   * @returns {GoogleAppsScript.Spreadsheet.Sheet} The templates sheet
    * @private
    */
-  private sendEmailViaGmail(
-    recipients: string, 
-    htmlBody: string, 
-    attachments: GoogleAppsScript.Base.Blob[],
-    subject: string
-  ): boolean {
-    CustomLogger.debug(`Attempting to send email. Recipients: ${recipients}, Subject: ${subject}, Attachments count: ${attachments.length}`);
-    try {
-      GmailApp.sendEmail(recipients, subject, '', {
-        htmlBody,
-        attachments,
-        from: CONFIG.FROM_EMAIL
-      });
-      CustomLogger.debug('Email sent successfully.');
-      return true;
-    } catch (error) {
-      CustomLogger.error('Error sending email', error);
-      return false;
-    }
-  }
-}
-
-/**
- * Enhanced logging utility
- */
-class CustomLogger {
-  static debug(message: string, data?: any) {
-      if (CONFIG.DEBUG_MODE) {
-          Logger.log(`[DEBUG] ${message} ${data ? JSON.stringify(data) : ''}`);
+  private getOrCreateTemplatesSheet(spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet): GoogleAppsScript.Spreadsheet.Sheet {
+    // Use the SpreadsheetUtils helper to get or create the sheet
+    let templatesSheet = spreadsheet.getSheetByName(SheetNames.TEMPLATES);
+    if (!templatesSheet) {
+      templatesSheet = spreadsheet.insertSheet(SheetNames.TEMPLATES);
+      
+      // Create the same headers as in the distributions_to_send sheet
+      const toSendSheet = spreadsheet.getSheetByName(SheetNames.TO_SEND);
+      if (toSendSheet) {
+        const headers = toSendSheet.getRange(1, 1, 1, toSendSheet.getLastColumn()).getValues()[0];
+        
+        // Make sure template_label is in the headers
+        if (!headers.includes('template_label')) {
+          headers.push('template_label');
+        }
+        
+        templatesSheet.appendRow(headers);
+      } else {
+        // Fallback headers if TO_SEND sheet doesn't exist
+        templatesSheet.appendRow([
+          'template_label', 'distribution_emails', 'additional_emails', 
+          'revu_session_invite', 'template_values', 'email_body_template',
+          'attachments_urls', 'email_subject_template', 'subject_template_value'
+        ]);
       }
+    }
+    return templatesSheet;
   }
 
-  static error(message: string, error: any) {
-      Logger.log(`[ERROR] ${message}`);
-      Logger.log('Error details:' + JSON.stringify({
-          message: error.message,
-          name: error.name,
-          stack: error.stack,
-          toString: error.toString()
-      }));
-  }
-}
-
-/**
- * Main entrypoint function that can be called from Apps Script console.
- * This function processes all pending email distributions in the spreadsheet.
- */
-async function processEmailDistributions(): Promise<void> {
-  try {
-      CustomLogger.debug('Processing email distributions...');
-      const processor = new EmailProcessor();
-      await processor.sendEmails();
-      CustomLogger.debug('Email distribution processing completed.');
-  } catch (error) {
-      CustomLogger.error('Error processing email distributions.', error);
-  }
-}
-
-// Add this if you want to create a custom menu in the spreadsheet
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Email Distributions')
-    .addItem('Send Pending Emails', 'processEmailDistributions')
-    .addToUi();
-}
-
-/**
- * Validates spreadsheet access and returns the spreadsheet object
- * @returns {GoogleAppsScript.Spreadsheet.Spreadsheet}
- * @throws {Error} If spreadsheet cannot be accessed
- */
-function getSpreadsheet() {
-  try {
-    CustomLogger.debug('Attempting to access spreadsheet', {
-      spreadsheetId: CONFIG.SPREADSHEET_ID
-    });
-
-    // Validate spreadsheet ID
-    if (!CONFIG.SPREADSHEET_ID || CONFIG.SPREADSHEET_ID === 'your-spreadsheet-id') {
-      throw new Error('Invalid spreadsheet ID configuration');
+  /**
+   * Loads template data from the templates sheet
+   * 
+   * This method:
+   * 1. Retrieves all data from the templates sheet
+   * 2. Maps column headers to their indices for easy reference
+   * 3. Creates an index of template rows by their template_label value
+   * 
+   * The template label index provides O(1) lookup of templates by their label,
+   * which is much more efficient than scanning the sheet each time.
+   * 
+   * @private
+   */
+  private loadTemplateData(): void {
+    if (!this.templatesSheet) {
+      CustomLogger.debug('Templates sheet not found, cannot load template data');
+      return;
     }
 
-    const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    
-    if (!spreadsheet) {
-      throw new Error('Could not open spreadsheet - null response');
+    this.templateData = this.templatesSheet.getDataRange().getValues();
+    if (this.templateData.length <= 1) {
+      CustomLogger.debug('No template data available in the templates sheet');
+      return;
     }
 
-    CustomLogger.debug('Successfully accessed spreadsheet');
-    return spreadsheet;
+    // Map headers to column indices using the utility method
+    const headers = this.templateData[0];
+    this.headerMap = SpreadsheetUtils.mapHeadersToIndices(headers);
 
-  } catch (error) {
-    CustomLogger.error('Spreadsheet access failed', error);
-    throw new Error(`Spreadsheet access error: ${error.message || error}`);
+    // Create a template label index for quick lookups
+    const templateLabelIndex = this.headerMap['template_label'];
+    if (templateLabelIndex === undefined) {
+      CustomLogger.debug('No template_label column found in templates sheet');
+      return;
+    }
+
+    // Index all templates by their template label
+    for (let i = 1; i < this.templateData.length; i++) {
+      const label = this.templateData[i][templateLabelIndex];
+      if (label) {
+        this.templateLabelIndex[label] = i;
+      }
+    }
+
+    CustomLogger.debug(`Loaded ${Object.keys(this.templateLabelIndex).length} templates from the templates sheet`);
   }
-}
 
-// Add this test function to verify access
-function testSpreadsheetAccess() {
-  try {
-    CustomLogger.debug('Starting spreadsheet access test');
-    
-    // Check if SpreadsheetApp is available
-    CustomLogger.debug('Checking SpreadsheetApp availability', {
-      hasSpreadsheetApp: typeof SpreadsheetApp !== 'undefined'
-    });
+  /**
+   * Gets template data for a specific template label
+   * 
+   * This method retrieves a template by its label and converts it to an EmailRow object.
+   * It ensures all required fields are present in the returned object, even if they're
+   * not defined in the template.
+   * 
+   * The template lookup process:
+   * 1. Checks if the template label exists in the index
+   * 2. If found, retrieves the corresponding row data
+   * 3. Maps the row data to an EmailRow object with all required fields
+   * 4. Sets the template_label explicitly to ensure it's included
+   * 
+   * @param {string} label - The template label to look up
+   * @returns {EmailRow | null} The template data as an EmailRow object or null if not found
+   * @public
+   * @example
+   * // Get a template called "RFI Response"
+   * const template = templateManager.getTemplateByLabel("RFI Response");
+   * if (template) {
+   *   // Use the template values to populate an email row
+   *   // Template fields will override any empty fields in the row
+   * }
+   */
+  public getTemplateByLabel(label: string): EmailRow | null {
+    if (!label || !this.templateLabelIndex[label]) {
+      return null;
+    }
 
-    const spreadsheet = getSpreadsheet();
-    CustomLogger.debug('Spreadsheet accessed successfully', {
-      name: spreadsheet.getName(),
-      url: spreadsheet.getUrl()
-    });
-
-  } catch (error) {
-    CustomLogger.error('Access test failed', error);
-  }
-}
-
-function testSpreadsheetPermissions() {
-  CustomLogger.debug('=== Starting Permission Tests ===');
-  
-  try {
-    // Test 1: Basic SpreadsheetApp access
-    const activeSpreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
-    CustomLogger.debug('Active spreadsheet test:', {
-      name: activeSpreadsheet.getName(),
-      id: activeSpreadsheet.getId()
-    });
+    const rowIndex = this.templateLabelIndex[label];
+    const templateRow = this.templateData[rowIndex];
     
-    // Test 2: Create temporary test spreadsheet
-    const testSheet = SpreadsheetApp.create('Test Sheet');
-    const testId = testSheet.getId();
-    CustomLogger.debug('Created test spreadsheet:', { id: testId });
+    // Required fields that should be in every EmailRow object
+    const requiredFields = [
+      'template_label', 'distribution_emails', 'additional_emails',
+      'revu_session_invite', 'template_values', 'email_body_template',
+      'attachments_urls', 'email_subject_template', 'subject_template_value'
+    ];
     
-    // Test 3: Open by ID
-    const openedSheet = SpreadsheetApp.openById(testId);
-    CustomLogger.debug('Opened test spreadsheet by ID');
+    // Convert the row to an EmailRow object using the SpreadsheetUtils helper
+    const emailRow = SpreadsheetUtils.mapRowToObject(templateRow, this.headerMap, requiredFields) as EmailRow;
     
-    // Cleanup
-    DriveApp.getFileById(testId).setTrashed(true);
-    CustomLogger.debug('Test spreadsheet deleted');
+    // Set the template_label explicitly
+    emailRow.template_label = label;
     
-    return true;
-  } catch (error) {
-    CustomLogger.error('Permission test failed at step:', error);
-    return false;
-  }
-}
-
-/**
- * Verify services are enabled
- */
-function checkServices() {
-  CustomLogger.debug('=== Checking Services ===');
-  
-  try {
-    const services = {
-      spreadsheet: typeof SpreadsheetApp !== 'undefined',
-      drive: typeof DriveApp !== 'undefined'
-    };
-    
-    CustomLogger.debug('Service availability:', services);
-    return services;
-  } catch (error) {
-    CustomLogger.error('Service check failed:', error);
-    return false;
+    return emailRow;
   }
 }

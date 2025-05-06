@@ -2,15 +2,33 @@
 <html>
 <head>
   <base target="_top">
-  <!-- Template Variables:
-       project_number: The numeric identifier of the project.
-       project_name: The name of the project (optional).
-       pm: The project manager's name.
-       review_end: The review deadline date/time.
-       sessionId: The Bluebeam Studio session ID.
-       large_files_download_url: Optional download link for files.
-       reviewer_notes: Additional special instructions.
-       recharge_number: Optional recharge number.
+  <!-- 
+    Template Variables:
+    ------------------
+    project_number: The numeric identifier of the project.
+    project_name: The name of the project (optional).
+    pm: The project manager's name.
+    review_end: The review deadline date/time.
+    sessionId: The Bluebeam Studio session ID. 
+               This is automatically extracted from revu_session_invite field.
+    large_files_download_url: Optional download link for files.
+    reviewer_notes: Additional special instructions.
+    recharge_number: Optional recharge number.
+    
+    Variable Processing:
+    ------------------
+    - Simple substitution: <?= variable ?> inserts the variable value
+    - HTML content: <?!= variable ?> inserts HTML content without escaping
+    - Conditional blocks: <? if (condition) { ?> content <? } ?>
+    - Null checking: <? if (variable) { ?> will only display content if variable exists and is not empty
+    
+    How templating works:
+    -------------------
+    1. The EmailBuilder class processes this template using HtmlService.createTemplate()
+    2. Values are populated from the template_values JSON field in the spreadsheet
+    3. The sessionId value is automatically extracted from the revu_session_invite field 
+    4. The template is evaluated to produce the final HTML email body
+    5. Empty variables don't cause errors - they simply render as empty strings
   -->
   <style type="text/css">
     /* Reset styles for email clients */
@@ -65,6 +83,11 @@
     <div class="content-section">
       <p>Please accept this email as a formal request for review of:</p>
       
+      <!-- 
+        Project identification section with conditional display of project name
+        - project_number is required and always displayed
+        - project_name is optional and only displayed if present
+      -->
       <h2 style="color: #005587; margin: 15px 0;">
         Project <?= project_number ?>
         <? if (project_name) { ?>
@@ -74,6 +97,11 @@
     </div>
 
     <div class="content-section">
+      <!-- 
+        Project manager field with conditional formatting
+        - If pm variable exists, display its value
+        - Otherwise, display "Not specified"
+      -->
       <p><strong>Project Manager:</strong> <? if (pm) { ?><?= pm ?><? } else { ?>Not specified<? } ?></p>
       <p><strong>Review Deadline:</strong> <?= review_end ?></p>
     </div>
@@ -82,7 +110,12 @@
       <h3 style="color: #005587; margin-bottom: 10px;">Review Materials</h3>
       <p>Please provide your comments through the following platforms:</p>
       <ul style="padding-left: 20px;">
+        <!-- 
+          Bluebeam Studio session link
+          - The sessionId is auto-extracted from revu_session_invite field
+        -->
         <li>Preferred method: <a href="https://studio.bluebeam.com/sessions/<?= sessionId ?>" class="button">Bluebeam Studio Session</a></li>
+        <!-- Conditional display for download URL -->
         <? if (download_url) { ?>
           <li>Download files: <a href="<?= large_files_download_url ?>">Access Files Here</a></li>
         <? } ?>
@@ -91,6 +124,11 @@
       </ul>
     </div>
 
+    <!-- 
+      Special instructions block - only shown if reviewer_notes exists
+      Using <?!= reviewer_notes ?> instead of <?= reviewer_notes ?> 
+      allows HTML formatting within the notes to be preserved
+    -->
     <? if (reviewer_notes) { ?>
     <div class="content-section">
       <h3 style="color: #005587; margin-bottom: 10px;">Special Instructions</h3>
@@ -98,6 +136,7 @@
     </div>
     <? } ?>
 
+    <!-- Recharge number section - only shown if recharge_number exists -->
     <? if (recharge_number) { ?>
     <div class="content-section">
       <p><strong>Recharge Number:</strong> <?= recharge_number ?></p>
