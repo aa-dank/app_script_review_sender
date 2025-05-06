@@ -5,7 +5,7 @@
  * customizable templates, and tracks sent distributions.
  * 
  * @author 
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 /** Defines the sheet names used in the spreadsheet */
@@ -941,4 +941,497 @@ class TemplateManager {
     
     return emailRow;
   }
+
+  /**
+   * Gets a list of all available template labels
+   * @returns {string[]} Array of template labels
+   * @public
+   */
+  public getAvailableTemplates(): string[] {
+    if (!this.templateLabelIndex) return [];
+    return Object.keys(this.templateLabelIndex);
+  }
+}
+
+/**
+ * Main processor class for handling email distributions
+ * Manages spreadsheet operations and coordinates email sending process
+ * 
+ * This class is responsible for:
+ * 1. Loading data from the spreadsheet
+ * 2. Processing each row in the distributions_to_send sheet
+ * 3. Applying templates from the distribution_templates sheet
+ * 4. Sending emails via the EmailBuilder
+ * 5. Moving processed rows to the history sheet
+ * 6. Handling error conditions and validation
+ */
+class EmailProcessor {
+  private spreadsheet: GoogleAppsScript.Spreadsheet.Spreadsheet;
+  private sourceSheet: GoogleAppsScript.Spreadsheet.Sheet;
+  private historySheet: GoogleAppsScript.Spreadsheet.Sheet;
+  private templateManager: TemplateManager;
+
+  /**
+   * Creates a new EmailProcessor instance
+   * 
+   * During initialization, the processor:
+   * 1. Opens the configured spreadsheet by ID
+   * 2. Gets the source sheet (distributions_to_send)
+   * 3. Gets or creates the history sheet (sent_history)
+   * 4. Initializes the template manager for template operations
+   */
+  constructor() {
+    this.spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    this.sourceSheet = this.spreadsheet.getSheetByName(SheetNames.TO_SEND);
+    this.historySheet = SpreadsheetUtils.getOrCreateSheet(
+      this.spreadsheet, 
+      SheetNames.SENT_HISTORY, 
+      [...this.getHeaderNames(), 'datetime']
+    );
+    this.templateManager = new TemplateManager(this.spreadsheet);
+  }
+
+  /**
+   * Gets the header names from the source sheet
+   * 
+   * This method retrieves all non-empty column headers from the first row
+   * of the source sheet. These headers are used when creating the history sheet
+   * and for mapping data from the spreadsheet.
+   * 
+   * @returns {string[]} Array of header names
+   * @private
+   */
+  private getHeaderNames(): string[] {
+    return this.sourceSheet.getRange(1, 1, 1, this.sourceSheet.getLastColumn())
+      .getValues()[0]
+      .filter(Boolean);
+  }
+
+  /**
+   * Maps headers to their column indices
+   * 
+   * Creates a mapping of column header names to their numerical indices
+   * for efficient lookups when processing row data.
+   * 
+   * @returns {{ [key: string]: number }} Map of header names to column indices (0-based)
+   * @private
+   */
+  private getHeaderMap(): { [key: string]: number } {
+    return SpreadsheetUtils.mapHeadersToIndices(
+      this.sourceSheet.getRange(1, 1, 1, this.sourceSheet.getLastColumn()).getValues()[0]
+    );
+  }
+
+  /**
+   * Processes all pending email distributions in the spreadsheet
+   * 
+   * This method:
+   * 1. Retrieves all data from the source sheet
+   * 2. Iterates through rows in reverse order (to handle row deletion)
+   * 3. Applies templates to rows that have template_label specified
+   * 4. Validates each row to ensure it has required fields
+   * 5. Sends emails using EmailBuilder
+   * 6. Moves successfully processed rows to the history sheet
+   * 7. Handles and logs any errors that occur during processing
+   * 
+   * Processing stops for a row and skips to the next if:
+   * - The row is empty
+   * - The specified template is not found
+   * - The row lacks required fields (email addresses, template URL)
+   * - An error occurs during email processing
+   * 
+   * @returns {void}
+   * @public
+   */
+  public sendEmails(): void {
+    const data = this.sourceSheet.getDataRange().getValues();
+    const headers = this.getHeaderMap();
+
+    // Process rows in reverse order to handle row deletion
+    for (let i = data.length - 1; i >= 1; i--) {
+      const row = data[i];
+      
+      try {
+        // Skip empty rows
+        if (row.every(cell => !cell)) {
+          CustomLogger.debug(`Skipping empty row ${i + 1}`);
+          continue;
+        }
+        
+        // Map the row to an EmailRow object
+        const rawEmailRow = SpreadsheetUtils.mapRowToObject(row, headers, []) as EmailRow;
+        
+        // Apply template if needed - this may throw an error if template is not found
+        let emailRow: EmailRow;
+        try {
+          emailRow = this.applyTemplateIfNeeded(rawEmailRow);
+        } catch (templateError) {
+          CustomLogger.error(`Template error in row ${i + 1}`, templateError);
+          // Add a UI alert for critical template errors
+          SpreadsheetApp.getUi().alert(`Error with template in row ${i + 1}: ${templateError.message}`);
+          continue; // Skip this row due to template error
+        }
+
+        if (this.processRow(emailRow)) {
+          CustomLogger.debug(`Row ${i + 1} processed successfully. Moving to history.`);
+          this.moveRowToHistory(i + 1, row);
+        } else {
+          CustomLogger.debug(`Row ${i + 1} skipped due to validation or processing failure.`);
+        }
+      } catch (error) {
+        CustomLogger.error(`Error processing row ${i + 1}`, error);
+      }
+    }
+  }
+
+  /**
+   * Applies template values to a row if needed
+   * 
+   * When a template_label is specified in a row, this method retrieves the corresponding
+   * template from the distribution_templates sheet and applies its values to any empty
+   * fields in the row. This allows for default values to be defined once and reused
+   * across multiple email distributions.
+   * 
+   * Note that template values only apply to fields that are empty in the original row -
+   * existing values are never overwritten by template values.
+   * 
+   * @param {EmailRow} row - The row data
+   * @returns {EmailRow} The row with template values applied
+   * @throws {Error} If a template is specified but not found in the templates sheet
+   * @private
+   */
+  private applyTemplateIfNeeded(row: EmailRow): EmailRow {
+    if (!row.template_label) {
+      return row;
+    }
+
+    const template = this.templateManager.getTemplateByLabel(row.template_label);
+    if (!template) {
+      // Throw an error if template is not found, which will cause this row to be skipped
+      throw new Error(
+        `Template "${row.template_label}" not found in the ${SheetNames.TEMPLATES} sheet. ` +
+        `Available templates: ${this.templateManager.getAvailableTemplates().join(', ') || 'None'}`
+      );
+    }
+
+    // Apply template values to empty fields
+    for (const key in template) {
+      if (!row[key] && template[key]) {
+        row[key] = template[key];
+      }
+    }
+
+    return row;
+  }
+
+  /**
+   * Processes a single row by validating and sending the email
+   * 
+   * This is the core processing method that:
+   * 1. Validates the row has minimum required fields
+   * 2. Creates an EmailBuilder instance for the row
+   * 3. Attempts to send the email
+   * 
+   * @param {EmailRow} row - The row data to process
+   * @returns {boolean} True if processed successfully and email was sent
+   * @private
+   */
+  private processRow(row: EmailRow): boolean {
+    if (!this.validateRow(row)) {
+      return false;
+    }
+
+    const emailBuilder = new EmailBuilder(row);
+    return emailBuilder.sendEmail();
+  }
+
+  /**
+   * Validates a row has the minimum required fields for email sending
+   * 
+   * A valid row must have:
+   * 1. At least one recipient (either distribution_emails or additional_emails)
+   * 2. An email body template URL
+   * 
+   * @param {EmailRow} row - The row data to validate
+   * @returns {boolean} True if the row has minimum required fields
+   * @private
+   */
+  private validateRow(row: EmailRow): boolean {
+    if (!row.distribution_emails && !row.additional_emails) {
+      CustomLogger.debug('No recipient email addresses provided.');
+      return false;
+    }
+    if (!row.email_body_template) {
+      CustomLogger.debug('No email template URL provided.');
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Moves a processed row to the history sheet and removes it from the source sheet
+   * 
+   * This method:
+   * 1. Adds a timestamp to the row data
+   * 2. Appends the row to the history sheet
+   * 3. Deletes the row from the source sheet
+   * 
+   * @param {number} rowIndex - The 1-based row index in the source sheet
+   * @param {any[]} rowData - The row data to move
+   * @private
+   */
+  private moveRowToHistory(rowIndex: number, rowData: any[]): void {
+    const rowWithTimestamp = [...rowData, new Date()];
+    this.historySheet.appendRow(rowWithTimestamp);
+    this.sourceSheet.deleteRow(rowIndex);
+  }
+
+  /**
+   * Applies templates to all pending rows without sending emails
+   * 
+   * This method allows users to preview how templates will be applied to rows
+   * before actually sending the emails. It:
+   * 
+   * 1. Scans all rows in the distributions_to_send sheet
+   * 2. For each row with a template_label, retrieves the corresponding template
+   * 3. Updates any empty cells in the row with values from the template
+   * 4. Highlights rows with missing templates in red
+   * 5. Provides a summary of updated rows and errors
+   * 
+   * This is useful for preparing a batch of emails before sending them, and for
+   * validating that template references are correct.
+   * 
+   * @returns {number} Number of rows that were updated with template values
+   * @public
+   */
+  public applyTemplatesToPendingRows(): number {
+    const data = this.sourceSheet.getDataRange().getValues();
+    const headerMap = this.getHeaderMap();
+
+    // Track how many rows were updated
+    let updatedRowCount = 0;
+    let errorCount = 0;
+
+    // Skip header row, process in normal order
+    for (let i = 1; i < data.length; i++) {
+      const rowIndex = i + 1; // 1-based row index for the sheet
+      const row = data[i];
+      
+      // Map the row to an object
+      let emailRow = SpreadsheetUtils.mapRowToObject(row, headerMap, []) as EmailRow;
+      
+      // Skip rows without template labels
+      if (!emailRow.template_label) {
+        continue;
+      }
+      
+      // Get template and apply it
+      const template = this.templateManager.getTemplateByLabel(emailRow.template_label);
+      if (!template) {
+        CustomLogger.debug(`Template not found for label: ${emailRow.template_label} in row ${rowIndex}`);
+        errorCount++;
+        
+        // Mark the cell with the template label with a red background to indicate an error
+        this.sourceSheet.getRange(rowIndex, headerMap['template_label'] + 1)
+          .setBackground('#ffcccc')
+          .setNote(`Template "${emailRow.template_label}" not found in the ${SheetNames.TEMPLATES} sheet.`);
+        continue;
+      }
+
+      // Track if any changes were made to this row
+      let rowChanged = false;
+
+      // Apply template values to empty fields
+      for (const key in template) {
+        const columnIndex = headerMap[key];
+        if (columnIndex === undefined) continue; // Skip if column doesn't exist
+        
+        // Only update if current value is empty and template has a value
+        if ((!row[columnIndex] || row[columnIndex] === '') && template[key]) {
+          // Update the cell in the sheet
+          this.sourceSheet.getRange(rowIndex, columnIndex + 1).setValue(template[key]);
+          rowChanged = true;
+        }
+      }
+
+      if (rowChanged) {
+        updatedRowCount++;
+      }
+    }
+
+    // If there were errors, show a summary alert
+    if (errorCount > 0) {
+      SpreadsheetApp.getUi().alert(
+        `Template Application Results:\n` +
+        `- ${updatedRowCount} rows updated successfully\n` + 
+        `- ${errorCount} rows skipped due to missing templates\n\n` +
+        `Rows with missing templates are highlighted in red.`
+      );
+    }
+
+    return updatedRowCount;
+  }
+}
+
+/**
+ * Main entrypoint function that processes all pending email distributions 
+ * in the spreadsheet.
+ * 
+ * This function:
+ * 1. Creates an EmailProcessor instance
+ * 2. Processes all rows in the distributions_to_send sheet
+ * 3. Sends emails for valid rows
+ * 4. Moves processed rows to the sent_history sheet
+ * 5. Logs the entire process for monitoring and debugging
+ * 
+ * The function can be:
+ * - Called directly from the Apps Script editor
+ * - Triggered by a time-based trigger for scheduled sending
+ * - Called from the custom menu in the spreadsheet UI
+ * 
+ * Note: This function handles all exceptions internally and logs errors
+ * rather than allowing them to propagate.
+ */
+function processEmailDistributions() {
+  try {
+    CustomLogger.info('Processing email distributions...');
+    const processor = new EmailProcessor();
+    processor.sendEmails();
+    CustomLogger.info('Email distribution processing completed.');
+  } catch (error) {
+    CustomLogger.error('Error processing email distributions', error);
+  }
+}
+
+/**
+ * Applies templates to pending rows without sending emails
+ * 
+ * This function allows users to apply template values to rows in the 
+ * distributions_to_send sheet without actually sending any emails. This is useful for:
+ * 
+ * 1. Preparing a batch of emails with consistent values
+ * 2. Validating template references before sending
+ * 3. Quickly populating multiple rows with default values
+ * 
+ * The function will:
+ * - Apply values from templates to empty fields in matching rows
+ * - Highlight rows with invalid template references in red
+ * - Display a summary alert showing how many rows were updated
+ * - Not modify any fields that already have values
+ * 
+ * Error handling:
+ * - Errors about specific templates will be logged and highlighted in the sheet
+ * - General errors will show an alert to the user
+ */
+function applyTemplatesToPendingRows() {
+  try {
+    CustomLogger.info('Applying templates to pending rows...');
+    const processor = new EmailProcessor();
+    const updatedCount = processor.applyTemplatesToPendingRows();
+    CustomLogger.info(`Template application completed. Updated ${updatedCount} rows.`);
+    SpreadsheetApp.getUi().alert(`Templates applied to ${updatedCount} rows.`);
+  } catch (error) {
+    CustomLogger.error('Error applying templates', error);
+    SpreadsheetApp.getUi().alert(`Error applying templates: ${error.message}`);
+  }
+}
+
+/**
+ * Initializes the spreadsheet structure by creating necessary sheets and headers
+ * 
+ * This function should be called when:
+ * - Setting up a new spreadsheet for the email distribution system
+ * - Ensuring all required sheets and columns exist
+ * - Resetting a spreadsheet to the default structure
+ * 
+ * The function will:
+ * 1. Create the three core sheets if they don't exist:
+ *    - distributions_to_send: For pending email distributions
+ *    - sent_history: For tracking sent distributions
+ *    - distribution_templates: For storing reusable templates
+ * 
+ * 2. Ensure all sheets have the required columns:
+ *    - template_label, distribution_emails, additional_emails
+ *    - revu_session_invite, template_values, email_body_template
+ *    - attachments_urls, email_subject_template, subject_template_value
+ *    - Plus 'datetime' for the sent_history sheet
+ * 
+ * 3. Format the header rows for better visibility
+ * 
+ * This function is safe to run multiple times - it won't duplicate sheets
+ * or columns if they already exist.
+ */
+function initializeSpreadsheetStructure() {
+  try {
+    CustomLogger.info('Initializing spreadsheet structure...');
+    const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    
+    // Define standard headers for all sheets
+    const standardHeaders = [
+      'template_label', 'distribution_emails', 'additional_emails', 
+      'revu_session_invite', 'template_values', 'email_body_template',
+      'attachments_urls', 'email_subject_template', 'subject_template_value'
+    ];
+    
+    // Create or update to_send sheet
+    const toSendSheet = SpreadsheetUtils.getOrCreateSheet(
+      spreadsheet, 
+      SheetNames.TO_SEND, 
+      standardHeaders
+    );
+    
+    // Create or update sent_history sheet
+    const sentHistorySheet = SpreadsheetUtils.getOrCreateSheet(
+      spreadsheet, 
+      SheetNames.SENT_HISTORY, 
+      [...standardHeaders, 'datetime']
+    );
+    
+    // Create or update templates sheet
+    const templatesSheet = SpreadsheetUtils.getOrCreateSheet(
+      spreadsheet, 
+      SheetNames.TEMPLATES, 
+      standardHeaders
+    );
+    
+    // Format headers to make them stand out
+    [toSendSheet, sentHistorySheet, templatesSheet].forEach(sheet => {
+      if (sheet.getLastRow() > 0) {
+        sheet.getRange(1, 1, 1, sheet.getLastColumn())
+          .setBackground('#f3f3f3')
+          .setFontWeight('bold');
+      }
+    });
+    
+    CustomLogger.info('Spreadsheet structure initialized successfully.');
+    SpreadsheetApp.getUi().alert('Spreadsheet structure initialized successfully.');
+  } catch (error) {
+    CustomLogger.error('Error initializing spreadsheet structure', error);
+    SpreadsheetApp.getUi().alert(`Error initializing spreadsheet structure: ${error.message}`);
+  }
+}
+
+/**
+ * Creates the custom menu when the spreadsheet is opened
+ * 
+ * This function is automatically triggered when:
+ * - A user opens the spreadsheet
+ * - The spreadsheet is reloaded
+ * 
+ * It creates a custom menu called "Email Distributions" with three options:
+ * 1. "Send Pending Emails" - Processes all rows and sends emails
+ * 2. "Apply Templates to Pending Rows" - Applies templates without sending
+ * 3. "Initialize Spreadsheet Structure" - Sets up required sheets and columns
+ * 
+ * Required permissions:
+ * - The script must be authorized to run with the user's permissions
+ * - The user must have edit access to the spreadsheet
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Email Distributions')
+    .addItem('Send Pending Emails', 'processEmailDistributions')
+    .addItem('Apply Templates to Pending Rows', 'applyTemplatesToPendingRows')
+    .addItem('Initialize Spreadsheet Structure', 'initializeSpreadsheetStructure')
+    .addToUi();
 }
