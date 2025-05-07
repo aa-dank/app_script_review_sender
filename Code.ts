@@ -101,7 +101,7 @@ interface EmailRow {
   /** Bluebeam Revu session invite text containing session ID */
   revu_session_invite: string;
   /** JSON string containing template variable values */
-  template_values: string; // Updated property name
+  email_template_values: string; // Updated property name from template_values
   /** Google Drive URL of the email template HTML file */
   email_body_template: string;
   /** Comma-separated list of Google Drive URLs for attachments */
@@ -656,7 +656,7 @@ class EmailBuilder {
    * 
    * This method handles the dynamic generation of HTML email content. The process works as follows:
    * 1. Retrieves the HTML template content from Google Drive using the file URL in the row
-   * 2. Gets all template values from the row's template_values JSON and any special fields
+   * 2. Gets all template values from the row's email_template_values JSON and any special fields
    * 3. Creates an Apps Script HTML template from the content
    * 4. Assigns all template values to the template object
    * 5. Evaluates the template, which processes all dynamic content markers (<?= varName ?>)
@@ -694,7 +694,7 @@ class EmailBuilder {
    * Retrieves and returns the template values for the email body and subject
    * 
    * This method performs several important steps to prepare values for template processing:
-   * 1. Sanitizes the JSON from template_values to handle common formatting issues
+   * 1. Sanitizes the JSON from email_template_values to handle common formatting issues
    * 2. Parses the sanitized JSON into a JavaScript object
    * 3. Extracts a Bluebeam session ID from revu_session_invite if available
    * 4. Merges all values into a single object that can be applied to templates
@@ -707,7 +707,7 @@ class EmailBuilder {
    * @returns {TemplateValues} Object containing all values to be used in templates
    * @private
    * @example
-   * // If template_values contains: {"project":"Building A","pm":"John Doe"}
+   * // If email_template_values contains: {"project":"Building A","pm":"John Doe"}
    * // And revu_session_invite contains: "Session ID: 123-456-789"
    * // Then getTemplateValues returns:
    * // {
@@ -718,7 +718,7 @@ class EmailBuilder {
    */
   private getTemplateValues(): TemplateValues {
     // Sanitize JSON before parsing
-    const sanitized = TextUtils.sanitizeJsonText(this.row.template_values);
+    const sanitized = TextUtils.sanitizeJsonText(this.row.email_template_values);
     const values = sanitized ? JSON.parse(sanitized) : {};
     
     // Parse the session ID from revu_session_invite, if present
@@ -839,7 +839,7 @@ class TemplateManager {
         // Fallback headers if TO_SEND sheet doesn't exist
         templatesSheet.appendRow([
           'template_label', 'distribution_emails', 'additional_emails', 
-          'revu_session_invite', 'template_values', 'email_body_template',
+          'revu_session_invite', 'email_template_values', 'email_body_template',
           'attachments_urls', 'email_subject_template', 'subject_template_value'
         ]);
       }
@@ -929,7 +929,7 @@ class TemplateManager {
     // Required fields that should be in every EmailRow object
     const requiredFields = [
       'template_label', 'distribution_emails', 'additional_emails',
-      'revu_session_invite', 'template_values', 'email_body_template',
+      'revu_session_invite', 'email_template_values', 'email_body_template',
       'attachments_urls', 'email_subject_template', 'subject_template_value'
     ];
     
@@ -1352,7 +1352,7 @@ function applyTemplatesToPendingRows() {
  * 
  * 2. Ensure all sheets have the required columns:
  *    - template_label, distribution_emails, additional_emails
- *    - revu_session_invite, template_values, email_body_template
+ *    - revu_session_invite, email_template_values, email_body_template
  *    - attachments_urls, email_subject_template, subject_template_value
  *    - Plus 'datetime' for the sent_history sheet
  * 
@@ -1369,7 +1369,7 @@ function initializeSpreadsheetStructure() {
     // Define standard headers for all sheets
     const standardHeaders = [
       'template_label', 'distribution_emails', 'additional_emails', 
-      'revu_session_invite', 'template_values', 'email_body_template',
+      'revu_session_invite', 'email_template_values', 'email_body_template',
       'attachments_urls', 'email_subject_template', 'subject_template_value'
     ];
     
