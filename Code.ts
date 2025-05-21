@@ -31,7 +31,7 @@ const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
 /* ------------------------------------------------------------------ */
 /*                              LOGGER                                */
 /* ------------------------------------------------------------------ */
-class CustomLogger {
+class AppScriptLogger {
   public static info(message: string, details: any = {}): void {
     console.log(`INFO  – ${message}`);
     Logger.log(`INFO  – ${message}`);
@@ -135,7 +135,7 @@ class FileUtils {
       DriveApp.getFileById(id).setTrashed(true);
       return true;
     } catch(e) {
-      CustomLogger.error(`Error trashing file ${id}`, e);
+      AppScriptLogger.error(`Error trashing file ${id}`, e);
       return false;
     }
   }
@@ -189,7 +189,7 @@ class EmailUtils {
       GmailApp.sendEmail(recipients, subject, '', { htmlBody, attachments, from });
       return true;
     } catch(e) {
-      CustomLogger.error('Error sending email', e);
+      AppScriptLogger.error('Error sending email', e);
       return false;
     }
   }
@@ -207,6 +207,13 @@ class TextUtils {
       .replace(/&quot;/g,'"')
       .replace(/&#39;/g,"'");
   }
+  
+  static sanitizeInput(text: string): string {
+    if (!text) return '';
+    // Replace ampersands with 'and' to prevent HTML entity encoding issues
+    return text.replace(/&/g, 'and');
+  }
+  
   static sanitizeJsonText(text: string): string {
     if (!text) return '{}';
     try {
@@ -216,7 +223,7 @@ class TextUtils {
       const obj = JSON.parse(t);
       return JSON.stringify(obj);
     } catch(e) {
-      CustomLogger.error('Error sanitizing JSON', e);
+      AppScriptLogger.error('Error sanitizing JSON', e);
       return '{}';
     }
   }
@@ -226,12 +233,20 @@ class TextUtils {
 /*                         EMAIL  BUILDER                            */
 /* ------------------------------------------------------------------ */
 class EmailBuilder {
-  constructor(private row: Record<string,any>) {}
+  constructor(private row: Record<string,any>) {
+    // Sanitize subject template values to prevent HTML entity encoding issues
+    if (this.row.subject_template_value) {
+      this.row.subject_template_value = TextUtils.sanitizeInput(this.row.subject_template_value);
+    }
+    if (this.row.email_subject_template) {
+      this.row.email_subject_template = TextUtils.sanitizeInput(this.row.email_subject_template);
+    }
+  }
   public sendEmail(): boolean {
     const to = EmailUtils.combineEmailAddresses(this.row.distribution_emails, this.row.additional_emails);
-    if (!to) { CustomLogger.debug('No recipients'); return false; }
+    if (!to) { AppScriptLogger.debug('No recipients'); return false; }
     const body = this.buildEmailBody();
-    if (!body) { CustomLogger.debug('No body'); return false; }
+    if (!body) { AppScriptLogger.debug('No body'); return false; }
     const atts = this.getAttachments();
     const subj = this.getFinalSubject();
     const sent = EmailUtils.sendEmail(to, subj, body, atts);
@@ -245,7 +260,7 @@ class EmailBuilder {
       Object.assign(tpl, this.getTemplateValues());
       return tpl.evaluate().getContent();
     } catch(e) {
-      CustomLogger.error('Error building body', e);
+      AppScriptLogger.error('Error building body', e);
       return null;
     }
   }
@@ -257,7 +272,7 @@ class EmailBuilder {
       let s = tpl.evaluate().getContent().trim();
       return TextUtils.decodeHtmlEntities(s) || CONFIG.DEFAULT_SUBJECT;
     } catch(e) {
-      CustomLogger.error('Error building subject', e);
+      AppScriptLogger.error('Error building subject', e);
       return CONFIG.DEFAULT_SUBJECT;
     }
   }
@@ -279,7 +294,7 @@ class EmailBuilder {
         }
         blobs.push(FileUtils.getFileBlob(id));
       } catch(e) {
-        CustomLogger.error(`Error attaching ${url}`, e);
+        AppScriptLogger.error(`Error attaching ${url}`, e);
         throw e;
       }
     }
@@ -367,8 +382,8 @@ class EmailProcessor {
           }
         }
       } catch(e) {
-        CustomLogger.error(`Template error row ${i+1}`, e);
-        SpreadsheetApp.getUi().alert(CustomLogger.formatErrorWithExecutionLogReference(`Error with template in row ${i+1}`, e));
+        AppScriptLogger.error(`Template error row ${i+1}`, e);
+        SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference(`Error with template in row ${i+1}`, e));
         continue;
       }
       try {
@@ -378,7 +393,7 @@ class EmailProcessor {
           this.source.deleteRow(i+1);
         }
       } catch(e) {
-        CustomLogger.error(`Error processing row ${i+1}`, e);
+        AppScriptLogger.error(`Error processing row ${i+1}`, e);
       }
     }
   }
@@ -423,12 +438,12 @@ class EmailProcessor {
 /** Applies templates to pending rows and shows a consolidated alert */
 function applyTemplatesToPendingRows(): void {
   try {
-    CustomLogger.info('Applying templates to pending rows...');
+    AppScriptLogger.info('Applying templates to pending rows...');
     const res = new EmailProcessor().applyTemplatesToPendingRows();
-    CustomLogger.info(`Template application completed. Updated ${res.updatedRowCount} rows.`);
+    AppScriptLogger.info(`Template application completed. Updated ${res.updatedRowCount} rows.`);
     const ui = SpreadsheetApp.getUi();
     if (res.errors.length) {
-      const msg = CustomLogger.formatErrorWithExecutionLogReference(
+      const msg = AppScriptLogger.formatErrorWithExecutionLogReference(
         `Some errors occurred while applying templates:\n\n${res.errors.join('\n')}`, {}
       );
       ui.alert(msg);
@@ -436,27 +451,27 @@ function applyTemplatesToPendingRows(): void {
       ui.alert(`Templates applied to ${res.updatedRowCount} rows.`);
     }
   } catch(e) {
-    CustomLogger.error('Error applying templates', e);
-    SpreadsheetApp.getUi().alert(CustomLogger.formatErrorWithExecutionLogReference('Error applying templates', e));
+    AppScriptLogger.error('Error applying templates', e);
+    SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference('Error applying templates', e));
   }
 }
 
 /** Processes all pending email distributions */
 function processEmailDistributions(): void {
   try {
-    CustomLogger.info('Processing email distributions...');
+    AppScriptLogger.info('Processing email distributions...');
     new EmailProcessor().sendEmails();
-    CustomLogger.info('Email distribution completed.');
+    AppScriptLogger.info('Email distribution completed.');
   } catch(e) {
-    CustomLogger.error('Error processing email distributions', e);
-    SpreadsheetApp.getUi().alert(CustomLogger.formatErrorWithExecutionLogReference('Error processing email distributions', e));
+    AppScriptLogger.error('Error processing email distributions', e);
+    SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference('Error processing email distributions', e));
   }
 }
 
 /** Initializes spreadsheet structure */
 function initializeSpreadsheetStructure(): void {
   try {
-    CustomLogger.info('Initializing spreadsheet structure...');
+    AppScriptLogger.info('Initializing spreadsheet structure...');
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     const std = [
       'template_label','distribution_emails','additional_emails',
@@ -475,8 +490,8 @@ function initializeSpreadsheetStructure(): void {
     });
     SpreadsheetApp.getUi().alert('Spreadsheet structure initialized successfully.');
   } catch(e) {
-    CustomLogger.error('Error initializing spreadsheet structure', e);
-    SpreadsheetApp.getUi().alert(CustomLogger.formatErrorWithExecutionLogReference('Error initializing spreadsheet structure', e));
+    AppScriptLogger.error('Error initializing spreadsheet structure', e);
+    SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference('Error initializing spreadsheet structure', e));
   }
 }
 
