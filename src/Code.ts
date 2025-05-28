@@ -3,7 +3,7 @@
  * This script handles the automated sending of email distributions with attachments
  * using Google Apps Script. It processes data from a spreadsheet, sends emails with
  * customizable templates, and tracks sent distributions.
- * @version 1.2.0
+ * @version 1.2.1
  */
 
 /** Defines the sheet names used in the spreadsheet */
@@ -244,9 +244,9 @@ class EmailBuilder {
   }
   public sendEmail(): boolean {
     const to = EmailUtils.combineEmailAddresses(this.row.distribution_emails, this.row.additional_emails);
-    if (!to) { AppScriptLogger.debug('No recipients'); return false; }
+    if (!to) { AppScriptLogger.info('No recipients'); return false; }
     const body = this.buildEmailBody();
-    if (!body) { AppScriptLogger.debug('No body'); return false; }
+    if (!body) { AppScriptLogger.info('No body'); return false; }
     const atts = this.getAttachments();
     const subj = this.getFinalSubject();
     const sent = EmailUtils.sendEmail(to, subj, body, atts);

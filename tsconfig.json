@@ -1,12 +1,24 @@
 {
-    "compilerOptions": {
-      "target": "ES2019",
-      "module": "none",
-      "isolatedModules": true,
-      "noResolve": true,
-      "experimentalDecorators": true
-    },
-    "include": [
-      "*.ts"
-    ]
-  }
+  "compilerOptions": {
+    /* ---------- Emit settings ---------- */
+    "target": "ES2019",            // OK for V8 runtime
+    "module": "none",              // Apps Script can’t load ES/CommonJS modules
+    "outDir": "build",             // where the compiled .js/.gs files go
+    "rootDir": "src",              // your source tree
+
+    /* ---------- Type‑checking ---------- */
+    "lib": ["ES2019"],
+    "types": ["google-apps-script"],   // <- pulls in Logger, DriveApp, etc.
+    "skipLibCheck": true,
+    "strict": false,                   // loosen as you prefer
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true,
+
+    /* ---------- Module resolution ---------- */
+    "moduleResolution": "node",    // lets the compiler find node-style imports
+    "esModuleInterop": true        // allows default‑import syntax for CommonJS
+  },
+
+  /* ---------- Files to compile ---------- */
+  "include": ["src/**/*.ts"]
+}
