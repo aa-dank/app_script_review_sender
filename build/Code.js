@@ -326,7 +326,7 @@ class TemplateManager {
             return;
         this.headerMap = SpreadsheetUtils.mapHeadersToIndices(rows[0]);
         for (let i = 1; i < rows.length; i++) {
-            const label = rows[i][this.headerMap['template_label']];
+            const label = rows[i][this.headerMap['distribution_template_label']];
             if (label) {
                 this.index[label] = i;
                 this.templateData[i] = rows[i];
@@ -346,6 +346,7 @@ class TemplateManager {
 /* ------------------------------------------------------------------ */
 /*                         EMAIL  PROCESSOR                           */
 /* ------------------------------------------------------------------ */
+/** EmailProcessor handles the main logic for sending emails and applying templates */
 class EmailProcessor {
     constructor() {
         this.ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
@@ -371,10 +372,10 @@ class EmailProcessor {
             try {
                 emailRow = SpreadsheetUtils.mapRowToObject(row, hMap);
                 // apply template
-                if (emailRow.template_label) {
-                    const tpl = this.tm.getTemplateByLabel(emailRow.template_label);
+                if (emailRow.distribution_template_label) {
+                    const tpl = this.tm.getTemplateByLabel(emailRow.distribution_template_label);
                     if (!tpl)
-                        throw new Error(`Template "${emailRow.template_label}" not found`);
+                        throw new Error(`Template "${emailRow.distribution_template_label}" not found`);
                     for (const k in tpl) {
                         if (!emailRow[k] && tpl[k])
                             emailRow[k] = tpl[k];
@@ -408,11 +409,11 @@ class EmailProcessor {
             const sheetRow = data[i];
             const rowIndex = i + 1;
             const er = SpreadsheetUtils.mapRowToObject(sheetRow, hMap);
-            if (!er.template_label)
+            if (!er.distribution_template_label)
                 continue;
-            const tpl = this.tm.getTemplateByLabel(er.template_label);
+            const tpl = this.tm.getTemplateByLabel(er.distribution_template_label);
             if (!tpl) {
-                errors.push(`Row ${rowIndex}: template "${er.template_label}" not found`);
+                errors.push(`Row ${rowIndex}: template "${er.distribution_template_label}" not found`);
                 continue;
             }
             let changed = false;
@@ -446,9 +447,6 @@ function applyTemplatesToPendingRows() {
             const msg = AppScriptLogger.formatErrorWithExecutionLogReference(`Some errors occurred while applying templates:\n\n${res.errors.join('\n')}`, {});
             ui.alert(msg);
         }
-        else {
-            ui.alert(`Templates applied to ${res.updatedRowCount} rows.`);
-        }
     }
     catch (e) {
         AppScriptLogger.error('Error applying templates', e);
@@ -473,7 +471,7 @@ function initializeSpreadsheetStructure() {
         AppScriptLogger.info('Initializing spreadsheet structure...');
         const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
         const std = [
-            'template_label', 'distribution_emails', 'additional_emails',
+            'distribution_template_label', 'distribution_emails', 'additional_emails',
             'revu_session_invite', 'email_template_values', 'email_body_template',
             'attachments_urls', 'email_subject_template', 'subject_template_value'
         ];

@@ -44,7 +44,7 @@ Your spreadsheet should include the following columns. Ensure that column header
   {"projectName": "New Building", "deadline": "2023-11-15"}
   ```
 
-- **template_label**  
+- **distribution_template_label**  
   (Optional) A label that identifies a predefined template in the `distribution_templates` sheet. When specified, any empty fields in the row will be automatically populated with values from the matching template.
 
 ### Optional Columns
@@ -71,7 +71,7 @@ The script automatically maps spreadsheet columns to expected keys. Ensure your 
 - subject_template_value
 - email_template_values
 - revu_session_invite
-- template_label
+- distribution_template_label
 
 ## How the Script Works
 
@@ -112,10 +112,10 @@ The system supports reusable templates that can be defined once and applied to m
 1. **Defining Templates:**  
    - Templates are stored in a sheet named `distribution_templates`
    - Each template row has the same columns as the `distributions_to_send` sheet
-   - The `template_label` column serves as a unique identifier for the template
+   - The `distribution_template_label` column serves as a unique identifier for the template
 
 2. **Using Templates:**  
-   - In the `distributions_to_send` sheet, set the `template_label` column to the label of your desired template
+   - In the `distributions_to_send` sheet, set the `distribution_template_label` column to the label of your desired template
    - When processing, the system will automatically fill in any empty fields with values from the template
    - Fields that already have values in the row will not be overwritten by template values
    - If a specified template doesn't exist, the system will throw an error and skip that row
