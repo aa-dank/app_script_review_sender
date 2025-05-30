@@ -18,13 +18,13 @@ interface Config {
   readonly FROM_EMAIL: string;
   readonly DEFAULT_SUBJECT: string;
   readonly SPREADSHEET_ID: string;
-  readonly DEBUG_MODE: boolean;
 }
+
+/** Global configuration object */
 const CONFIG: Config = {
   FROM_EMAIL:      'constdoc@ucsc.edu',
   DEFAULT_SUBJECT: 'Your Subject Here',
-  SPREADSHEET_ID:  '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY',
-  DEBUG_MODE:      true
+  SPREADSHEET_ID:  '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY'
 };
 const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
 

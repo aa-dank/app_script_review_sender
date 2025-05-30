@@ -12,11 +12,11 @@ var SheetNames;
     SheetNames["SENT_HISTORY"] = "sent_history";
     SheetNames["TEMPLATES"] = "distribution_templates";
 })(SheetNames || (SheetNames = {}));
+/** Global configuration object */
 const CONFIG = {
     FROM_EMAIL: 'constdoc@ucsc.edu',
     DEFAULT_SUBJECT: 'Your Subject Here',
-    SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY',
-    DEBUG_MODE: true
+    SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY'
 };
 const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
 /* ------------------------------------------------------------------ */
