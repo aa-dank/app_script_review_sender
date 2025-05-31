@@ -3,7 +3,7 @@
  * This script handles the automated sending of email distributions with attachments
  * using Google Apps Script. It processes data from a spreadsheet, sends emails with
  * customizable templates, and tracks sent distributions.
- * @version 1.2.1
+ * @version 1.2.3
  */
 /** Defines the sheet names used in the spreadsheet */
 var SheetNames;
@@ -15,7 +15,6 @@ var SheetNames;
 /** Global configuration object */
 const CONFIG = {
     FROM_EMAIL: 'constdoc@ucsc.edu',
-    DEFAULT_SUBJECT: 'Your Subject Here',
     SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY'
 };
 const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
@@ -237,8 +236,19 @@ class EmailBuilder {
             AppScriptLogger.info('No body');
             return false;
         }
+        let subj;
+        try {
+            subj = this.getFinalSubject();
+            if (!subj) {
+                AppScriptLogger.info('Empty subject line');
+                return false;
+            }
+        }
+        catch (e) {
+            AppScriptLogger.info('Failed to generate subject line');
+            return false;
+        }
         const atts = this.getAttachments();
-        const subj = this.getFinalSubject();
         const sent = EmailUtils.sendEmail(to, subj, body, atts);
         if (sent)
             this.trashAttachments();
@@ -247,8 +257,25 @@ class EmailBuilder {
     buildEmailBody() {
         try {
             const html = FileUtils.getFileContentFromUrl(this.row.email_body_template);
+            // Find all template variables in the HTML (looking for <%= varName %> patterns)
+            const templateVarRegex = /<%=\s*([a-zA-Z0-9_]+)\s*%>/g;
+            const templateVars = new Set();
+            let match;
+            while ((match = templateVarRegex.exec(html)) !== null) {
+                templateVars.add(match[1]);
+            }
+            // Get template values and ensure all referenced variables exist
+            const templateValues = this.getTemplateValues();
+            for (const varName of templateVars) {
+                if (templateValues[varName] === undefined) {
+                    AppScriptLogger.warn(`Template uses undefined variable: ${varName}. Using empty string.`, {
+                        rowData: JSON.stringify(this.row)
+                    });
+                    templateValues[varName] = '';
+                }
+            }
             const tpl = HtmlService.createTemplate(html);
-            Object.assign(tpl, this.getTemplateValues());
+            Object.assign(tpl, templateValues);
             return tpl.evaluate().getContent();
         }
         catch (e) {
@@ -257,17 +284,30 @@ class EmailBuilder {
         }
     }
     getFinalSubject() {
-        if (!this.row.email_subject_template)
-            return CONFIG.DEFAULT_SUBJECT;
+        if (!this.row.email_subject_template) {
+            throw new Error('Missing email_subject_template');
+        }
         try {
-            const tpl = HtmlService.createTemplate(this.row.email_subject_template);
-            Object.assign(tpl, this.getTemplateValues());
-            let s = tpl.evaluate().getContent().trim();
-            return TextUtils.decodeHtmlEntities(s) || CONFIG.DEFAULT_SUBJECT;
+            // If the subject template contains templating syntax and subject_template_value exists,
+            // format the subject with the subject_template_value
+            if (this.row.email_subject_template.includes('<?=') && this.row.subject_template_value) {
+                const tpl = HtmlService.createTemplate(this.row.email_subject_template);
+                // Add subject_template_value directly to the template
+                tpl.subject_template_value = this.row.subject_template_value;
+                // Add other template values
+                Object.assign(tpl, this.getTemplateValues());
+                let s = tpl.evaluate().getContent().trim();
+                return TextUtils.decodeHtmlEntities(s);
+            }
+            else {
+                // If no templating is needed or no subject_template_value provided,
+                // just return the subject template as is
+                return this.row.email_subject_template;
+            }
         }
         catch (e) {
             AppScriptLogger.error('Error building subject', e);
-            return CONFIG.DEFAULT_SUBJECT;
+            throw e; // Re-throw the error to prevent the email from being sent
         }
     }
     getTemplateValues() {

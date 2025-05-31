@@ -31,11 +31,14 @@ Your spreadsheet should include the following columns. Ensure that column header
   _Important:_ Each file must be under 21 MB in size. Larger files will cause the email to fail.
 
 - **email_subject_template**  
-  Template text or content for the email subject line. It can contain dynamic templating variables.
-  _Fallback:_ If left empty, the system uses a default subject specified in configuration.
+  Template text or content for the email subject line. This field is required for sending emails.
+  It can contain template variables in the format `<?= variable_name ?>`.
+  _Important:_ If this field is empty, the email will not be sent.
 
 - **subject_template_value**  
-  (Optional) A field to supply extra values for the subject template. HTML entities in this field will be decoded before processing.
+  Value to be inserted into the `email_subject_template` where `<?= subject_template_value ?>` appears.
+  If the subject template contains this placeholder but no value is provided, the email will not be sent.
+  HTML entities in this field will be decoded before processing.
 
 - **email_template_values**  
   A JSON string that contains key/value pairs for dynamic content replacements when processing the email body template.  
@@ -58,7 +61,6 @@ Your spreadsheet should include the following columns. Ensure that column header
 
 The script's configuration is defined in Code.ts (and subsequently in Code.gs) via a global CONFIG object with properties such as:
 - FROM_EMAIL: The sender's email address.
-- DEFAULT_SUBJECT: Fallback subject if no template is provided.
 - SPREADSHEET_ID: The ID of the Google Spreadsheet containing distribution data.
 - DEBUG_MODE: Enables detailed logging for troubleshooting.
 
@@ -256,6 +258,7 @@ The Apps Script HTML templating engine lets you design dynamic email templates. 
   ```
 - In your spreadsheet, set the `email_body_template` (or `email_subject_template`) column to the URL of your HTML file.
 - Ensure that the corresponding `email_template_values` JSON contains keys matching your placeholders.
+- The system will automatically detect if your template uses variables that aren't defined in your template values and will log warnings. Missing variables will be replaced with empty strings to prevent template errors.
 
 ### Special Variables
 
