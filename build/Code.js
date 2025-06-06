@@ -411,15 +411,12 @@ class EmailProcessor {
             let emailRow;
             try {
                 emailRow = SpreadsheetUtils.mapRowToObject(row, hMap);
-                // apply template
-                if (emailRow.distribution_template_label) {
-                    const tpl = this.tm.getTemplateByLabel(emailRow.distribution_template_label);
-                    if (!tpl)
-                        throw new Error(`Template "${emailRow.distribution_template_label}" not found`);
-                    for (const k in tpl) {
-                        if (!emailRow[k] && tpl[k])
-                            emailRow[k] = tpl[k];
-                    }
+                // Apply template and write values back to spreadsheet
+                const templateApplied = this.applyTemplateToRow(emailRow, i + 1, hMap);
+                if (templateApplied) {
+                    // Refresh row data after template application
+                    const updatedRow = this.source.getRange(i + 1, 1, 1, this.source.getLastColumn()).getValues()[0];
+                    emailRow = SpreadsheetUtils.mapRowToObject(updatedRow, hMap);
                 }
             }
             catch (e) {
@@ -430,7 +427,9 @@ class EmailProcessor {
             try {
                 const builder = new EmailBuilder(emailRow);
                 if (builder.sendEmail()) {
-                    this.history.appendRow([...row, new Date()]);
+                    // Get the current row data (with applied templates) for history
+                    const currentRow = this.source.getRange(i + 1, 1, 1, this.source.getLastColumn()).getValues()[0];
+                    this.history.appendRow([...currentRow, new Date()]);
                     this.source.deleteRow(i + 1);
                 }
             }
@@ -438,6 +437,28 @@ class EmailProcessor {
                 AppScriptLogger.error(`Error processing row ${i + 1}`, e);
             }
         }
+    }
+    /** Applies template to a single row and writes values back to spreadsheet */
+    applyTemplateToRow(emailRow, rowIndex, headerMap) {
+        if (!emailRow.distribution_template_label)
+            return false;
+        const tpl = this.tm.getTemplateByLabel(emailRow.distribution_template_label);
+        if (!tpl) {
+            throw new Error(`Template "${emailRow.distribution_template_label}" not found`);
+        }
+        let templateApplied = false;
+        for (const k in tpl) {
+            const col = headerMap[k];
+            if (col == null)
+                continue;
+            const currentValue = emailRow[k];
+            if ((!currentValue || currentValue === '') && tpl[k]) {
+                this.source.getRange(rowIndex, col + 1).setValue(tpl[k]);
+                emailRow[k] = tpl[k]; // Update the in-memory object as well
+                templateApplied = true;
+            }
+        }
+        return templateApplied;
     }
     /** applyTemplatesToPendingRows collects errors and updates empty cells */
     applyTemplatesToPendingRows() {
@@ -451,24 +472,14 @@ class EmailProcessor {
             const er = SpreadsheetUtils.mapRowToObject(sheetRow, hMap);
             if (!er.distribution_template_label)
                 continue;
-            const tpl = this.tm.getTemplateByLabel(er.distribution_template_label);
-            if (!tpl) {
-                errors.push(`Row ${rowIndex}: template "${er.distribution_template_label}" not found`);
-                continue;
+            try {
+                const templateApplied = this.applyTemplateToRow(er, rowIndex, hMap);
+                if (templateApplied)
+                    updated++;
             }
-            let changed = false;
-            for (const k in tpl) {
-                const col = hMap[k];
-                if (col == null)
-                    continue;
-                const val = sheetRow[col];
-                if ((!val || val === '') && tpl[k]) {
-                    this.source.getRange(rowIndex, col + 1).setValue(tpl[k]);
-                    changed = true;
-                }
+            catch (e) {
+                errors.push(`Row ${rowIndex}: ${e instanceof Error ? e.message : 'Unknown error'}`);
             }
-            if (changed)
-                updated++;
         }
         return { updatedRowCount: updated, errors };
     }
