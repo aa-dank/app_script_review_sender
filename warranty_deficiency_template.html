@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Warranty Deficiency Notice</title>
+  <base target="_top">
+  <!--
+    Template Variables (processed by Apps Script HtmlService):
+      project_number          – e.g. "2500-078"
+      project_name            – e.g. "Natural Sciences Two - Elevator #14 Modernization"
+      project_manager_name    – e.g. "Dave Sullivan"
+      warranty_deficiency_id  – e.g. "2500-078 WD 01"
+      large_files_download_url (optional) – link for oversized attachments
+  -->
+  <style type="text/css">
+    body {font-family: Arial, sans-serif; margin:0; padding:24px; background:#f6f6f6; color:#333; line-height:1.45;}
+    .wrapper{max-width:600px;margin:0 auto;background:#fff;border:1px solid #e1e1e1;border-radius:4px;padding:24px;}
+    h1{font-size:20px;margin:0 0 16px;color:#005587;}
+    p{margin:0 0 1em;}
+    table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;}
+    th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eee;}
+    th{width:38%;white-space:nowrap;color:#005587;}
+    .button{display:inline-block;padding:10px 16px;background:#005587;color:#fff!important;text-decoration:none;border-radius:4px;margin:12px 0;}
+    .footer{margin-top:24px;font-size:12px;color:#666;border-top:1px solid #eee;padding-top:12px;}
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Warranty Deficiency Notice</h1>
+
+    <p>
+      A new <strong>Warranty Deficiency</strong> has been reported for Project <strong><?!= project_number ?></strong>, <strong><?!= project_name ?></strong>.
+      This issue has been reviewed by <?!= project_manager_name ?> and determined to require your immediate attention.
+    </p>
+
+    <p>
+      The deficiency has been assigned ID <strong><?!= warranty_deficiency_id ?></strong>.
+    </p>
+
+    <? if (large_files_download_url) { ?>
+      <p>The official Notice of Deficiency and supporting documents can be downloaded using the link below:</p>
+      <p>
+        <a href="<?= large_files_download_url ?>" class="button">Download Notice of Deficiency</a>
+      </p>
+      <p>Files will be hosted for at least 30 days.</p>
+    <? } else { ?>
+      <p>Please see the attached PDF, which is the official Notice of Deficiency.</p>
+    <? } ?>
+
+    <p>
+      When the warranty issue has been resolved, arrange for inspection and sign‑off. Once verified, you will receive confirmation that this item is closed.
+    </p>
+
+    <table role="presentation" aria-hidden="true">
+      <tbody>
+        <tr><th>Project Number:</th><td><?!= project_number ?></td></tr>
+        <tr><th>Project Name:</th><td><?!= project_name ?></td></tr>
+        <tr><th>Project Manager:</th><td><?!= project_manager_name ?></td></tr>
+        <tr><th>Deficiency ID:</th><td><?!= warranty_deficiency_id ?></td></tr>
+      </tbody>
+    </table>
+
+    <div class="footer">
+      UCSC Physical Planning, Development &amp; Operations • constdoc@ucsc.edu • (831)&nbsp;459‑5326
+    </div>
+  </div>
+</body>
+</html>

@@ -3,7 +3,7 @@
  * This script handles the automated sending of email distributions with attachments
  * using Google Apps Script. It processes data from a spreadsheet, sends emails with
  * customizable templates, and tracks sent distributions.
- * @version 1.2.3
+ * @version 1.2.5
  */
 /** Defines the sheet names used in the spreadsheet */
 var SheetNames;
@@ -257,8 +257,8 @@ class EmailBuilder {
     buildEmailBody() {
         try {
             const html = FileUtils.getFileContentFromUrl(this.row.email_body_template);
-            // Find all template variables in the HTML (looking for <%= varName %> patterns)
-            const templateVarRegex = /<%=\s*([a-zA-Z0-9_]+)\s*%>/g;
+            // Find all template variables in the HTML (looking for <?= varName ?> and <?!= varName ?> patterns)
+            const templateVarRegex = /<\?!?=\s*([a-zA-Z0-9_]+)\s*\?>/g;
             const templateVars = new Set();
             let match;
             while ((match = templateVarRegex.exec(html)) !== null) {
