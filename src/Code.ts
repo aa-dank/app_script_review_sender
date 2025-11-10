@@ -3,7 +3,7 @@
  * This script handles the automated sending of email distributions with attachments
  * using Google Apps Script. It processes data from a spreadsheet, sends emails with
  * customizable templates, and tracks sent distributions.
- * @version 1.2.5
+ * @version 1.2.6
  */
 
 /** Defines the sheet names used in the spreadsheet */
@@ -21,15 +21,17 @@ interface Config {
 
 /** Global configuration object */
 const CONFIG: Config = {
-  FROM_EMAIL:      'constdoc@ucsc.edu',
-  SPREADSHEET_ID:  '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY'
+  FROM_EMAIL: 'constdoc@ucsc.edu',
+  SPREADSHEET_ID: '1RfbiEpwU2APw3fXg5VoD4Dg2PlvacTV7EIrb_h98mcY'
 };
+
 const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
 
 /* ------------------------------------------------------------------ */
 /*                              LOGGER                                */
 /* ------------------------------------------------------------------ */
 class AppScriptLogger {
+  /** Logs informational messages */
   public static info(message: string, details: any = {}): void {
     console.log(`INFO  – ${message}`);
     Logger.log(`INFO  – ${message}`);
@@ -38,6 +40,7 @@ class AppScriptLogger {
       Logger.log(JSON.stringify(details, null, 2));
     }
   }
+  /** Logs warning messages */
   public static warn(message: string, details: any = {}): void {
     console.warn(`WARN  – ${message}`);
     Logger.log(`WARN  – ${message}`);
@@ -46,6 +49,7 @@ class AppScriptLogger {
       Logger.log(JSON.stringify(details, null, 2));
     }
   }
+  /** Logs error messages */
   public static error(message: string, error: any): void {
     console.error(`ERROR – ${message}`);
     Logger.log(`ERROR – ${message}`);
@@ -65,8 +69,8 @@ class AppScriptLogger {
 /* ------------------------------------------------------------------ */
 class SpreadsheetUtils {
   /** Maps header names to zero-based column indices */
-  static mapHeadersToIndices(headerRow: any[]): Record<string,number> {
-    return headerRow.reduce((acc: Record<string,number>, h: string, i: number) => {
+  static mapHeadersToIndices(headerRow: any[]): Record<string, number> {
+    return headerRow.reduce((acc: Record<string, number>, h: string, i: number) => {
       acc[h] = i;
       return acc;
     }, {});
@@ -92,10 +96,10 @@ class SpreadsheetUtils {
    */
   static mapRowToObject(
     row: any[],
-    headerMap: Record<string,number>,
+    headerMap: Record<string, number>,
     requiredFields: string[] = []
-  ): Record<string,any> {
-    const result: Record<string,any> = {};
+  ): Record<string, any> {
+    const result: Record<string, any> = {};
     for (const f of requiredFields) {
       result[f] = headerMap[f] !== undefined ? row[headerMap[f]] || '' : '';
     }
@@ -112,36 +116,42 @@ class SpreadsheetUtils {
 /*                            FILE  UTILS                             */
 /* ------------------------------------------------------------------ */
 class FileUtils {
+  /** Extracts the file ID from a Google Drive URL */
   static extractFileId(url: string): string {
     const m = url.match(/[-\w]{25,}/);
     if (!m) throw new Error(`Invalid Google Drive URL: ${url}`);
     return m[0];
   }
+  /** Retrieves the content of a file from its Google Drive URL */
   static getFileContentFromUrl(url: string): string {
     const id = this.extractFileId(url);
     const blob = DriveApp.getFileById(id).getBlob();
     return blob.getDataAsString();
   }
+  /** Checks if a file exceeds the specified maximum size */
   static isFileTooLarge(id: string, max: number): boolean {
     return DriveApp.getFileById(id).getSize() > max;
   }
+  /** Retrieves the Blob of a file by its ID */
   static getFileBlob(id: string): GoogleAppsScript.Base.Blob {
     return DriveApp.getFileById(id).getBlob();
   }
+  /** Moves a file to trash by its ID */
   static trashFile(id: string): boolean {
     try {
       DriveApp.getFileById(id).setTrashed(true);
       return true;
-    } catch(e) {
+    } catch (e) {
       AppScriptLogger.error(`Error trashing file ${id}`, e);
       return false;
     }
   }
-  static getFileMetadata(id: string): Record<string,any> {
+  /** Retrieves metadata of a file by its ID */
+  static getFileMetadata(id: string): Record<string, any> {
     try {
       const f = DriveApp.getFileById(id);
-      return { id: f.getId(), name: f.getName(), size: f.getSize(), owner: f.getOwner()?.getEmail()||'' };
-    } catch(e) {
+      return { id: f.getId(), name: f.getName(), size: f.getSize(), owner: f.getOwner()?.getEmail() || '' };
+    } catch (e) {
       return { id, error: e.toString() };
     }
   }
@@ -150,25 +160,29 @@ class FileUtils {
 /* ------------------------------------------------------------------ */
 /*                          EMAIL  UTILS                             */
 /* ------------------------------------------------------------------ */
+/** Utility functions for email processing */
 class EmailUtils {
+  /** Parses email addresses from input text */
   static parseEmailAddresses(input: string): string[] {
     if (!input) return [];
-    const clean = input.replace(/^\/\/.*/gm,'').toLowerCase();
+    const clean = input.replace(/^\/\/.*/gm, '').toLowerCase();
     const re = /([a-z0-9!#$%&'*+\/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+\/=?^_`{|}~-]+)*(@|\s+at\s+)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(\.|\s+dot\s+))+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)/gi;
     const out: string[] = [];
-    let m: RegExpExecArray|null;
+    let m: RegExpExecArray | null;
     while (m = re.exec(clean)) {
-      let e = m[0].replace(/\s+(at|dot)\s+/g, (_,p) => p==='at'? '@':'.');
+      let e = m[0].replace(/\s+(at|dot)\s+/g, (_, p) => p === 'at' ? '@' : '.');
       out.push(e);
     }
     return out;
   }
-  static parseSessionId(text: string): string|null {
+  /** Parses a session ID from input text */
+  static parseSessionId(text: string): string | null {
     if (!text) return null;
     const m = text.match(/\b\d{3}-\d{3}-\d{3}\b/);
     return m ? m[0] : null;
   }
-  static combineEmailAddresses(...sources: string[]): string|null {
+  /** Combines and deduplicates email addresses from multiple sources */
+  static combineEmailAddresses(...sources: string[]): string | null {
     const all: string[] = [];
     for (const s of sources) {
       if (s) all.push(...this.parseEmailAddresses(s));
@@ -176,6 +190,7 @@ class EmailUtils {
     const uniq = Array.from(new Set(all.filter(Boolean)));
     return uniq.length ? uniq.join(',') : null;
   }
+  /** Sends an email with optional attachments */
   static sendEmail(
     recipients: string,
     subject: string,
@@ -186,7 +201,7 @@ class EmailUtils {
     try {
       GmailApp.sendEmail(recipients, subject, '', { htmlBody, attachments, from });
       return true;
-    } catch(e) {
+    } catch (e) {
       AppScriptLogger.error('Error sending email', e);
       return false;
     }
@@ -196,31 +211,33 @@ class EmailUtils {
 /* ------------------------------------------------------------------ */
 /*                          TEXT  UTILS                              */
 /* ------------------------------------------------------------------ */
+/** Utility functions for text processing */
 class TextUtils {
+  /** Decodes common HTML entities in a string */
   static decodeHtmlEntities(text: string): string {
     return text
-      .replace(/&amp;/g,'&')
-      .replace(/&lt;/g,'<')
-      .replace(/&gt;/g,'>')
-      .replace(/&quot;/g,'"')
-      .replace(/&#39;/g,"'");
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
   }
-  
+  /** Sanitizes input text to prevent HTML entity encoding issues */
   static sanitizeInput(text: string): string {
     if (!text) return '';
     // Replace ampersands with 'and' to prevent HTML entity encoding issues
     return text.replace(/&/g, 'and');
   }
-  
+  /** Sanitizes JSON text to ensure valid structure */
   static sanitizeJsonText(text: string): string {
     if (!text) return '{}';
     try {
-      let t = text.replace(/\\"/g,'"').replace(/\\\\/g,'\\').replace(/\r?\n/g,' ').trim();
-      if (!t.startsWith('{')) t = '{'+t;
+      let t = text.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\r?\n/g, ' ').trim();
+      if (!t.startsWith('{')) t = '{' + t;
       if (!t.endsWith('}')) t += '}';
       const obj = JSON.parse(t);
       return JSON.stringify(obj);
-    } catch(e) {
+    } catch (e) {
       AppScriptLogger.error('Error sanitizing JSON', e);
       return '{}';
     }
@@ -230,8 +247,10 @@ class TextUtils {
 /* ------------------------------------------------------------------ */
 /*                         EMAIL  BUILDER                            */
 /* ------------------------------------------------------------------ */
+/** EmailBuilder constructs and sends emails based on row data */
 class EmailBuilder {
-  constructor(private row: Record<string,any>) {
+  /** Initializes the EmailBuilder with row data */
+  constructor(private row: Record<string, any>) {
     // Sanitize subject template values to prevent HTML entity encoding issues
     if (this.row.subject_template_value) {
       this.row.subject_template_value = TextUtils.sanitizeInput(this.row.subject_template_value);
@@ -239,7 +258,10 @@ class EmailBuilder {
     if (this.row.email_subject_template) {
       this.row.email_subject_template = TextUtils.sanitizeInput(this.row.email_subject_template);
     }
-  }  public sendEmail(): boolean {
+  }
+
+  /** Sends the email based on the row data */
+  public sendEmail(): boolean {
     const to = EmailUtils.combineEmailAddresses(this.row.distribution_emails, this.row.additional_emails);
     if (!to) { AppScriptLogger.info('No recipients'); return false; }
     const body = this.buildEmailBody();
@@ -252,7 +274,7 @@ class EmailBuilder {
         AppScriptLogger.info('Empty subject line');
         return false;
       }
-    } catch(e) {
+    } catch (e) {
       AppScriptLogger.info('Failed to generate subject line');
       return false;
     }
@@ -261,7 +283,9 @@ class EmailBuilder {
     const sent = EmailUtils.sendEmail(to, subj, body, atts);
     if (sent) this.trashAttachments();
     return sent;
-  } private buildEmailBody(): string|null {
+  }
+  /** Builds the email body from the template */
+  private buildEmailBody(): string | null {
     try {
       const html = FileUtils.getFileContentFromUrl(this.row.email_body_template);
       
@@ -287,11 +311,13 @@ class EmailBuilder {
       const tpl = HtmlService.createTemplate(html);
       Object.assign(tpl, templateValues);
       return tpl.evaluate().getContent();
-    } catch(e) {
+    } catch (e) {
       AppScriptLogger.error('Error building body', e);
       return null;
     }
-  }  private getFinalSubject(): string {
+  }
+  /** Retrieves the final subject line for the email */
+  private getFinalSubject(): string {
     if (!this.row.email_subject_template) {
       throw new Error('Missing email_subject_template');
     }
@@ -312,41 +338,68 @@ class EmailBuilder {
         // just return the subject template as is
         return this.row.email_subject_template;
       }
-    } catch(e) {
+    } catch (e) {
       AppScriptLogger.error('Error building subject', e);
       throw e; // Re-throw the error to prevent the email from being sent
     }
   }
-  private getTemplateValues(): Record<string,any> {
+  /** Retrieves template values from the row */
+  private getTemplateValues(): Record<string, any> {
     const json = TextUtils.sanitizeJsonText(this.row.email_template_values);
     const vals = JSON.parse(json);
     const sid = EmailUtils.parseSessionId(this.row.revu_session_invite);
     if (sid) vals.sessionId = sid;
     return vals;
   }
+  /** Retrieves attachments as Blobs, enforcing size limits */
   private getAttachments(): GoogleAppsScript.Base.Blob[] {
     if (!this.row.attachments_urls) return [];
+    
     const blobs: GoogleAppsScript.Base.Blob[] = [];
-    for (const url of this.row.attachments_urls.split(/[,;]+/).map(s=>s.trim())) {
+    let totalSize = 0;
+    // Split URLs by commas or semicolons and trim whitespace
+    const urls = this.row.attachments_urls.split(/[,;]+/).map(s => s.trim());
+    
+    for (const url of urls) {
       try {
         const id = FileUtils.extractFileId(url);
-        if (FileUtils.isFileTooLarge(id, MAX_ATTACHMENT_SIZE)) {
-          throw new Error(`Attachment too large: ${id}`);
+        const file = DriveApp.getFileById(id);
+        const fileName = file.getName();
+        const fileSize = file.getSize();
+        
+        // Check if this single file exceeds the limit
+        if (fileSize > MAX_ATTACHMENT_SIZE) {
+          const sizeMB = (fileSize / (1024 * 1024)).toFixed(2);
+          const limitMB = (MAX_ATTACHMENT_SIZE / (1024 * 1024)).toFixed(0);
+          throw new Error(`Attachment "${fileName}" is too large (${sizeMB} MB). Individual file limit is ${limitMB} MB.`);
         }
-        blobs.push(FileUtils.getFileBlob(id));
-      } catch(e) {
+        
+        // Check if adding this file would exceed the aggregate limit
+        if (totalSize + fileSize > MAX_ATTACHMENT_SIZE) {
+          const currentMB = (totalSize / (1024 * 1024)).toFixed(2);
+          const fileMB = (fileSize / (1024 * 1024)).toFixed(2);
+          const limitMB = (MAX_ATTACHMENT_SIZE / (1024 * 1024)).toFixed(0);
+          throw new Error(`Adding "${fileName}" (${fileMB} MB) would exceed total attachment limit. Current total: ${currentMB} MB, Limit: ${limitMB} MB.`);
+        }
+        
+        totalSize += fileSize;
+        blobs.push(file.getBlob());
+        
+      } catch (e) {
         AppScriptLogger.error(`Error attaching ${url}`, e);
         throw e;
       }
     }
+    
     return blobs;
   }
+  /** Moves attachments to trash after sending */
   private trashAttachments(): void {
     if (!this.row.attachments_urls) return;
-    for (const url of this.row.attachments_urls.split(/[,;]+/).map(s=>s.trim())) {
+    for (const url of this.row.attachments_urls.split(/[,;]+/).map(s => s.trim())) {
       try {
         FileUtils.trashFile(FileUtils.extractFileId(url));
-      } catch {}
+      } catch { }
     }
   }
 }
@@ -354,16 +407,18 @@ class EmailBuilder {
 /* ------------------------------------------------------------------ */
 /*                       TEMPLATE  MANAGEMENT                         */
 /* ------------------------------------------------------------------ */
+/** TemplateManager handles loading and retrieving email templates */
 class TemplateManager {
   private templatesSheet: GoogleAppsScript.Spreadsheet.Sheet;
   private templateData: any[][] = [];
-  private headerMap: Record<string,number> = {};
-  private index: Record<string,number> = {};
+  private headerMap: Record<string, number> = {};
+  private index: Record<string, number> = {};
 
   constructor(private ss: GoogleAppsScript.Spreadsheet.Spreadsheet) {
     this.templatesSheet = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.TEMPLATES);
     this.loadTemplateData();
   }
+  /** Loads template data into memory for quick access */
   private loadTemplateData(): void {
     const rows = this.templatesSheet.getDataRange().getValues();
     if (rows.length < 2) return;
@@ -376,11 +431,13 @@ class TemplateManager {
       }
     }
   }
-  public getTemplateByLabel(label: string): Record<string,any>|null {
+  /** Retrieves a template by its label */
+  public getTemplateByLabel(label: string): Record<string, any> | null {
     const idx = this.index[label];
     if (idx == null) return null;
     return SpreadsheetUtils.mapRowToObject(this.templateData[idx], this.headerMap, Object.keys(this.headerMap));
   }
+  /** Lists all available template labels */
   public getAvailableTemplates(): string[] {
     return Object.keys(this.index);
   }
@@ -395,36 +452,51 @@ class EmailProcessor {
   private source = this.ss.getSheetByName(SheetNames.TO_SEND)!;
   private history = SpreadsheetUtils.getOrCreateSheet(this.ss, SheetNames.SENT_HISTORY, [...this.getHeaderNames(), 'datetime']);
   private tm = new TemplateManager(this.ss);
-
+  /** Retrieves header names from the source sheet */
   private getHeaderNames(): string[] {
-    return this.source.getRange(1,1,1,this.source.getLastColumn()).getValues()[0].filter(Boolean) as string[];
+    return this.source.getRange(1, 1, 1, this.source.getLastColumn()).getValues()[0].filter(Boolean) as string[];
   }
-  private getHeaderMap(): Record<string,number> {
+  /** Builds a header-to-index map for the source sheet */
+  private getHeaderMap(): Record<string, number> {
     return SpreadsheetUtils.mapHeadersToIndices(
-      this.source.getRange(1,1,1,this.source.getLastColumn()).getValues()[0]
+      this.source.getRange(1, 1, 1, this.source.getLastColumn()).getValues()[0]
     );
   }
 
-  /** sendEmails processes and moves rows to history */
+  /**
+   * Processes all pending email distributions and moves successful sends to history.
+   * 
+   * Iterates through rows bottom-to-top to avoid index shifting when deleting rows.
+   * For each row:
+   * 1. Applies distribution template if specified
+   * 2. Builds and sends email with attachments
+   * 3. Moves successfully sent distributions to history sheet
+   * 4. Shows alert for any errors encountered
+   * 
+   * @throws Will show UI alert if template application fails
+   * @throws Will show UI alert if email sending fails
+   */
   public sendEmails(): void {
+    // Process rows from bottom to top to avoid index shifting on deletions
     const data = this.source.getDataRange().getValues();
     const hMap = this.getHeaderMap();
     for (let i = data.length - 1; i >= 1; i--) {
       const row = data[i];
-      if (row.every(c=>!c)) continue;
-      let emailRow: Record<string,any>;
+      if (row.every(c => !c)) continue;
+      let emailRow: Record<string, any>;
       try {
-        emailRow = SpreadsheetUtils.mapRowToObject(row, hMap) as Record<string,any>;
+        emailRow = SpreadsheetUtils.mapRowToObject(row, hMap) as Record<string, any>;
         // Apply template and write values back to spreadsheet
         const templateApplied = this.applyTemplateToRow(emailRow, i + 1, hMap);
         if (templateApplied) {
           // Refresh row data after template application
           const updatedRow = this.source.getRange(i + 1, 1, 1, this.source.getLastColumn()).getValues()[0];
-          emailRow = SpreadsheetUtils.mapRowToObject(updatedRow, hMap) as Record<string,any>;
+          emailRow = SpreadsheetUtils.mapRowToObject(updatedRow, hMap) as Record<string, any>;
         }
-      } catch(e) {
-        AppScriptLogger.error(`Template error row ${i+1}`, e);
-        SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference(`Error with template in row ${i+1}`, e));
+      } catch (e) {
+        AppScriptLogger.error(`Template error row ${i + 1}`, e);
+        const uiMessage = AppScriptLogger.formatErrorWithExecutionLogReference(`Error applying distribution template in row ${i + 1}`, e);
+        SpreadsheetApp.getUi().alert(uiMessage);
         continue;
       }
       try {
@@ -433,16 +505,18 @@ class EmailProcessor {
           // Get the current row data (with applied templates) for history
           const currentRow = this.source.getRange(i + 1, 1, 1, this.source.getLastColumn()).getValues()[0];
           this.history.appendRow([...currentRow, new Date()]);
-          this.source.deleteRow(i+1);
+          this.source.deleteRow(i + 1);
         }
-      } catch(e) {
-        AppScriptLogger.error(`Error processing row ${i+1}`, e);
+      } catch (e) {
+        AppScriptLogger.error(`Error processing row ${i + 1}`, e);
+        const uiMessage = AppScriptLogger.formatErrorWithExecutionLogReference(`Error processing email distribution in row ${i + 1}`, e);
+        SpreadsheetApp.getUi().alert(uiMessage);
       }
     }
   }
 
   /** Applies template to a single row and writes values back to spreadsheet */
-  private applyTemplateToRow(emailRow: Record<string,any>, rowIndex: number, headerMap: Record<string,number>): boolean {
+  private applyTemplateToRow(emailRow: Record<string, any>, rowIndex: number, headerMap: Record<string, number>): boolean {
     if (!emailRow.distribution_template_label) return false;
     
     const tpl = this.tm.getTemplateByLabel(emailRow.distribution_template_label);
@@ -467,7 +541,7 @@ class EmailProcessor {
   }
 
   /** applyTemplatesToPendingRows collects errors and updates empty cells */
-  public applyTemplatesToPendingRows(): { updatedRowCount:number; errors:string[] } {
+  public applyTemplatesToPendingRows(): { updatedRowCount: number; errors: string[] } {
     const data = this.source.getDataRange().getValues();
     const hMap = this.getHeaderMap();
     let updated = 0;
@@ -476,13 +550,13 @@ class EmailProcessor {
     for (let i = 1; i < data.length; i++) {
       const sheetRow = data[i];
       const rowIndex = i + 1;
-      const er = SpreadsheetUtils.mapRowToObject(sheetRow, hMap) as Record<string,any>;
+      const er = SpreadsheetUtils.mapRowToObject(sheetRow, hMap) as Record<string, any>;
       if (!er.distribution_template_label) continue;
 
       try {
         const templateApplied = this.applyTemplateToRow(er, rowIndex, hMap);
         if (templateApplied) updated++;
-      } catch(e) {
+      } catch (e) {
         errors.push(`Row ${rowIndex}: ${e instanceof Error ? e.message : 'Unknown error'}`);
       }
     }
@@ -507,7 +581,7 @@ function applyTemplatesToPendingRows(): void {
       );
       ui.alert(msg);
     }
-  } catch(e) {
+  } catch (e) {
     AppScriptLogger.error('Error applying templates', e);
     SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference('Error applying templates', e));
   }
@@ -519,7 +593,7 @@ function processEmailDistributions(): void {
     AppScriptLogger.info('Processing email distributions...');
     new EmailProcessor().sendEmails();
     AppScriptLogger.info('Email distribution completed.');
-  } catch(e) {
+  } catch (e) {
     AppScriptLogger.error('Error processing email distributions', e);
     SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference('Error processing email distributions', e));
   }
@@ -531,22 +605,22 @@ function initializeSpreadsheetStructure(): void {
     AppScriptLogger.info('Initializing spreadsheet structure...');
     const ss = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
     const std = [
-      'distribution_template_label','distribution_emails','additional_emails',
-      'revu_session_invite','email_template_values','email_body_template',
-      'attachments_urls','email_subject_template','subject_template_value'
+      'distribution_template_label', 'distribution_emails', 'additional_emails',
+      'revu_session_invite', 'email_template_values', 'email_body_template',
+      'attachments_urls', 'email_subject_template', 'subject_template_value'
     ];
     const toSend = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.TO_SEND, std);
-    const hist   = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.SENT_HISTORY, [...std,'datetime']);
-    const tmpl   = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.TEMPLATES, std);
-    [toSend,hist,tmpl].forEach(sh => {
-      if (sh.getLastRow()>0) {
-        sh.getRange(1,1,1,sh.getLastColumn())
+    const hist = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.SENT_HISTORY, [...std, 'datetime']);
+    const tmpl = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.TEMPLATES, std);
+    [toSend, hist, tmpl].forEach(sh => {
+      if (sh.getLastRow() > 0) {
+        sh.getRange(1, 1, 1, sh.getLastColumn())
           .setBackground('#f3f3f3')
           .setFontWeight('bold');
       }
     });
     SpreadsheetApp.getUi().alert('Spreadsheet structure initialized successfully.');
-  } catch(e) {
+  } catch (e) {
     AppScriptLogger.error('Error initializing spreadsheet structure', e);
     SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference('Error initializing spreadsheet structure', e));
   }
@@ -556,8 +630,8 @@ function initializeSpreadsheetStructure(): void {
 function onOpen(): void {
   SpreadsheetApp.getUi()
     .createMenu('Email Distributions')
-    .addItem('Send Pending Emails','processEmailDistributions')
-    .addItem('Apply Templates to Pending Rows','applyTemplatesToPendingRows')
-    .addItem('Initialize Spreadsheet Structure','initializeSpreadsheetStructure')
+    .addItem('Send Pending Emails', 'processEmailDistributions')
+    .addItem('Apply Templates to Pending Rows', 'applyTemplatesToPendingRows')
+    .addItem('Initialize Spreadsheet Structure', 'initializeSpreadsheetStructure')
     .addToUi();
 }

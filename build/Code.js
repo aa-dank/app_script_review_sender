@@ -3,7 +3,7 @@
  * This script handles the automated sending of email distributions with attachments
  * using Google Apps Script. It processes data from a spreadsheet, sends emails with
  * customizable templates, and tracks sent distributions.
- * @version 1.2.5
+ * @version 1.2.6
  */
 /** Defines the sheet names used in the spreadsheet */
 var SheetNames;
@@ -22,6 +22,7 @@ const MAX_ATTACHMENT_SIZE = 21 * 1024 * 1024; // 21MB
 /*                              LOGGER                                */
 /* ------------------------------------------------------------------ */
 class AppScriptLogger {
+    /** Logs informational messages */
     static info(message, details = {}) {
         console.log(`INFO  – ${message}`);
         Logger.log(`INFO  – ${message}`);
@@ -30,6 +31,7 @@ class AppScriptLogger {
             Logger.log(JSON.stringify(details, null, 2));
         }
     }
+    /** Logs warning messages */
     static warn(message, details = {}) {
         console.warn(`WARN  – ${message}`);
         Logger.log(`WARN  – ${message}`);
@@ -38,6 +40,7 @@ class AppScriptLogger {
             Logger.log(JSON.stringify(details, null, 2));
         }
     }
+    /** Logs error messages */
     static error(message, error) {
         console.error(`ERROR – ${message}`);
         Logger.log(`ERROR – ${message}`);
@@ -94,23 +97,28 @@ class SpreadsheetUtils {
 /*                            FILE  UTILS                             */
 /* ------------------------------------------------------------------ */
 class FileUtils {
+    /** Extracts the file ID from a Google Drive URL */
     static extractFileId(url) {
         const m = url.match(/[-\w]{25,}/);
         if (!m)
             throw new Error(`Invalid Google Drive URL: ${url}`);
         return m[0];
     }
+    /** Retrieves the content of a file from its Google Drive URL */
     static getFileContentFromUrl(url) {
         const id = this.extractFileId(url);
         const blob = DriveApp.getFileById(id).getBlob();
         return blob.getDataAsString();
     }
+    /** Checks if a file exceeds the specified maximum size */
     static isFileTooLarge(id, max) {
         return DriveApp.getFileById(id).getSize() > max;
     }
+    /** Retrieves the Blob of a file by its ID */
     static getFileBlob(id) {
         return DriveApp.getFileById(id).getBlob();
     }
+    /** Moves a file to trash by its ID */
     static trashFile(id) {
         try {
             DriveApp.getFileById(id).setTrashed(true);
@@ -121,6 +129,7 @@ class FileUtils {
             return false;
         }
     }
+    /** Retrieves metadata of a file by its ID */
     static getFileMetadata(id) {
         var _a;
         try {
@@ -135,7 +144,9 @@ class FileUtils {
 /* ------------------------------------------------------------------ */
 /*                          EMAIL  UTILS                             */
 /* ------------------------------------------------------------------ */
+/** Utility functions for email processing */
 class EmailUtils {
+    /** Parses email addresses from input text */
     static parseEmailAddresses(input) {
         if (!input)
             return [];
@@ -149,12 +160,14 @@ class EmailUtils {
         }
         return out;
     }
+    /** Parses a session ID from input text */
     static parseSessionId(text) {
         if (!text)
             return null;
         const m = text.match(/\b\d{3}-\d{3}-\d{3}\b/);
         return m ? m[0] : null;
     }
+    /** Combines and deduplicates email addresses from multiple sources */
     static combineEmailAddresses(...sources) {
         const all = [];
         for (const s of sources) {
@@ -164,6 +177,7 @@ class EmailUtils {
         const uniq = Array.from(new Set(all.filter(Boolean)));
         return uniq.length ? uniq.join(',') : null;
     }
+    /** Sends an email with optional attachments */
     static sendEmail(recipients, subject, htmlBody, attachments = [], from = CONFIG.FROM_EMAIL) {
         try {
             GmailApp.sendEmail(recipients, subject, '', { htmlBody, attachments, from });
@@ -178,7 +192,9 @@ class EmailUtils {
 /* ------------------------------------------------------------------ */
 /*                          TEXT  UTILS                              */
 /* ------------------------------------------------------------------ */
+/** Utility functions for text processing */
 class TextUtils {
+    /** Decodes common HTML entities in a string */
     static decodeHtmlEntities(text) {
         return text
             .replace(/&amp;/g, '&')
@@ -187,12 +203,14 @@ class TextUtils {
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'");
     }
+    /** Sanitizes input text to prevent HTML entity encoding issues */
     static sanitizeInput(text) {
         if (!text)
             return '';
         // Replace ampersands with 'and' to prevent HTML entity encoding issues
         return text.replace(/&/g, 'and');
     }
+    /** Sanitizes JSON text to ensure valid structure */
     static sanitizeJsonText(text) {
         if (!text)
             return '{}';
@@ -214,7 +232,9 @@ class TextUtils {
 /* ------------------------------------------------------------------ */
 /*                         EMAIL  BUILDER                            */
 /* ------------------------------------------------------------------ */
+/** EmailBuilder constructs and sends emails based on row data */
 class EmailBuilder {
+    /** Initializes the EmailBuilder with row data */
     constructor(row) {
         this.row = row;
         // Sanitize subject template values to prevent HTML entity encoding issues
@@ -225,6 +245,7 @@ class EmailBuilder {
             this.row.email_subject_template = TextUtils.sanitizeInput(this.row.email_subject_template);
         }
     }
+    /** Sends the email based on the row data */
     sendEmail() {
         const to = EmailUtils.combineEmailAddresses(this.row.distribution_emails, this.row.additional_emails);
         if (!to) {
@@ -254,6 +275,7 @@ class EmailBuilder {
             this.trashAttachments();
         return sent;
     }
+    /** Builds the email body from the template */
     buildEmailBody() {
         try {
             const html = FileUtils.getFileContentFromUrl(this.row.email_body_template);
@@ -283,6 +305,7 @@ class EmailBuilder {
             return null;
         }
     }
+    /** Retrieves the final subject line for the email */
     getFinalSubject() {
         if (!this.row.email_subject_template) {
             throw new Error('Missing email_subject_template');
@@ -310,6 +333,7 @@ class EmailBuilder {
             throw e; // Re-throw the error to prevent the email from being sent
         }
     }
+    /** Retrieves template values from the row */
     getTemplateValues() {
         const json = TextUtils.sanitizeJsonText(this.row.email_template_values);
         const vals = JSON.parse(json);
@@ -318,17 +342,35 @@ class EmailBuilder {
             vals.sessionId = sid;
         return vals;
     }
+    /** Retrieves attachments as Blobs, enforcing size limits */
     getAttachments() {
         if (!this.row.attachments_urls)
             return [];
         const blobs = [];
-        for (const url of this.row.attachments_urls.split(/[,;]+/).map(s => s.trim())) {
+        let totalSize = 0;
+        // Split URLs by commas or semicolons and trim whitespace
+        const urls = this.row.attachments_urls.split(/[,;]+/).map(s => s.trim());
+        for (const url of urls) {
             try {
                 const id = FileUtils.extractFileId(url);
-                if (FileUtils.isFileTooLarge(id, MAX_ATTACHMENT_SIZE)) {
-                    throw new Error(`Attachment too large: ${id}`);
+                const file = DriveApp.getFileById(id);
+                const fileName = file.getName();
+                const fileSize = file.getSize();
+                // Check if this single file exceeds the limit
+                if (fileSize > MAX_ATTACHMENT_SIZE) {
+                    const sizeMB = (fileSize / (1024 * 1024)).toFixed(2);
+                    const limitMB = (MAX_ATTACHMENT_SIZE / (1024 * 1024)).toFixed(0);
+                    throw new Error(`Attachment "${fileName}" is too large (${sizeMB} MB). Individual file limit is ${limitMB} MB.`);
                 }
-                blobs.push(FileUtils.getFileBlob(id));
+                // Check if adding this file would exceed the aggregate limit
+                if (totalSize + fileSize > MAX_ATTACHMENT_SIZE) {
+                    const currentMB = (totalSize / (1024 * 1024)).toFixed(2);
+                    const fileMB = (fileSize / (1024 * 1024)).toFixed(2);
+                    const limitMB = (MAX_ATTACHMENT_SIZE / (1024 * 1024)).toFixed(0);
+                    throw new Error(`Adding "${fileName}" (${fileMB} MB) would exceed total attachment limit. Current total: ${currentMB} MB, Limit: ${limitMB} MB.`);
+                }
+                totalSize += fileSize;
+                blobs.push(file.getBlob());
             }
             catch (e) {
                 AppScriptLogger.error(`Error attaching ${url}`, e);
@@ -337,6 +379,7 @@ class EmailBuilder {
         }
         return blobs;
     }
+    /** Moves attachments to trash after sending */
     trashAttachments() {
         if (!this.row.attachments_urls)
             return;
@@ -351,6 +394,7 @@ class EmailBuilder {
 /* ------------------------------------------------------------------ */
 /*                       TEMPLATE  MANAGEMENT                         */
 /* ------------------------------------------------------------------ */
+/** TemplateManager handles loading and retrieving email templates */
 class TemplateManager {
     constructor(ss) {
         this.ss = ss;
@@ -360,6 +404,7 @@ class TemplateManager {
         this.templatesSheet = SpreadsheetUtils.getOrCreateSheet(ss, SheetNames.TEMPLATES);
         this.loadTemplateData();
     }
+    /** Loads template data into memory for quick access */
     loadTemplateData() {
         const rows = this.templatesSheet.getDataRange().getValues();
         if (rows.length < 2)
@@ -373,12 +418,14 @@ class TemplateManager {
             }
         }
     }
+    /** Retrieves a template by its label */
     getTemplateByLabel(label) {
         const idx = this.index[label];
         if (idx == null)
             return null;
         return SpreadsheetUtils.mapRowToObject(this.templateData[idx], this.headerMap, Object.keys(this.headerMap));
     }
+    /** Lists all available template labels */
     getAvailableTemplates() {
         return Object.keys(this.index);
     }
@@ -394,14 +441,29 @@ class EmailProcessor {
         this.history = SpreadsheetUtils.getOrCreateSheet(this.ss, SheetNames.SENT_HISTORY, [...this.getHeaderNames(), 'datetime']);
         this.tm = new TemplateManager(this.ss);
     }
+    /** Retrieves header names from the source sheet */
     getHeaderNames() {
         return this.source.getRange(1, 1, 1, this.source.getLastColumn()).getValues()[0].filter(Boolean);
     }
+    /** Builds a header-to-index map for the source sheet */
     getHeaderMap() {
         return SpreadsheetUtils.mapHeadersToIndices(this.source.getRange(1, 1, 1, this.source.getLastColumn()).getValues()[0]);
     }
-    /** sendEmails processes and moves rows to history */
+    /**
+     * Processes all pending email distributions and moves successful sends to history.
+     *
+     * Iterates through rows bottom-to-top to avoid index shifting when deleting rows.
+     * For each row:
+     * 1. Applies distribution template if specified
+     * 2. Builds and sends email with attachments
+     * 3. Moves successfully sent distributions to history sheet
+     * 4. Shows alert for any errors encountered
+     *
+     * @throws Will show UI alert if template application fails
+     * @throws Will show UI alert if email sending fails
+     */
     sendEmails() {
+        // Process rows from bottom to top to avoid index shifting on deletions
         const data = this.source.getDataRange().getValues();
         const hMap = this.getHeaderMap();
         for (let i = data.length - 1; i >= 1; i--) {
@@ -421,7 +483,8 @@ class EmailProcessor {
             }
             catch (e) {
                 AppScriptLogger.error(`Template error row ${i + 1}`, e);
-                SpreadsheetApp.getUi().alert(AppScriptLogger.formatErrorWithExecutionLogReference(`Error with template in row ${i + 1}`, e));
+                const uiMessage = AppScriptLogger.formatErrorWithExecutionLogReference(`Error applying distribution template in row ${i + 1}`, e);
+                SpreadsheetApp.getUi().alert(uiMessage);
                 continue;
             }
             try {
@@ -435,6 +498,8 @@ class EmailProcessor {
             }
             catch (e) {
                 AppScriptLogger.error(`Error processing row ${i + 1}`, e);
+                const uiMessage = AppScriptLogger.formatErrorWithExecutionLogReference(`Error processing email distribution in row ${i + 1}`, e);
+                SpreadsheetApp.getUi().alert(uiMessage);
             }
         }
     }
