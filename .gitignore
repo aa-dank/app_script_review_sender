@@ -4,3 +4,4 @@ node_modules/**/.*
 .git/
 .vscode/
 node*
+.github/copilot-instructions.md

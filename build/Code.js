@@ -348,8 +348,8 @@ class EmailBuilder {
             return [];
         const blobs = [];
         let totalSize = 0;
-        // Split URLs by commas or semicolons and trim whitespace
-        const urls = this.row.attachments_urls.split(/[,;]+/).map(s => s.trim());
+        // Split URLs by commas, semicolons, or newlines and trim whitespace
+        const urls = this.row.attachments_urls.split(/[,;\r\n]+/).map(s => s.trim()).filter(Boolean);
         for (const url of urls) {
             try {
                 const id = FileUtils.extractFileId(url);
@@ -383,7 +383,7 @@ class EmailBuilder {
     trashAttachments() {
         if (!this.row.attachments_urls)
             return;
-        for (const url of this.row.attachments_urls.split(/[,;]+/).map(s => s.trim())) {
+        for (const url of this.row.attachments_urls.split(/[,;\r\n]+/).map(s => s.trim()).filter(Boolean)) {
             try {
                 FileUtils.trashFile(FileUtils.extractFileId(url));
             }

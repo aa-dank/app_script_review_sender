@@ -14,3 +14,4 @@ node_modules/**/.*/**
 
 constdoc_review_distribution_markup.jpg
 README.md
+.github/copilot-instructions.md
