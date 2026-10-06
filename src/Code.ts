@@ -3,7 +3,7 @@
  * This script handles the automated sending of email distributions with attachments
  * using Google Apps Script. It processes data from a spreadsheet, sends emails with
  * customizable templates, and tracks sent distributions.
- * @version 1.2.6
+ * @version 1.2.7
  */
 
 /** Defines the sheet names used in the spreadsheet */
@@ -116,11 +116,48 @@ class SpreadsheetUtils {
 /*                            FILE  UTILS                             */
 /* ------------------------------------------------------------------ */
 class FileUtils {
+  /** Normalizes a cell value containing one or more Google Drive URLs. */
+  static parseAttachmentUrls(raw: string): string[] {
+    if (!raw) return [];
+
+    const rawDebug = {
+      type: typeof raw,
+      length: raw.length,
+      charCodes: Array.from(raw.substring(0, 200)).map((c, i) => ({
+        index: i,
+        char: c,
+        code: c.charCodeAt(0),
+        hex: '0x' + c.charCodeAt(0).toString(16)
+      }))
+    };
+    AppScriptLogger.info('Raw attachment URLs received from sheet:', rawDebug);
+    AppScriptLogger.info('Raw attachment URLs (full):', { raw });
+
+    const cleaned = String(raw)
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .replace(/[\u00A0\u1680\u180E\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]/g, ' ')
+      .replace(/<!--.*?-->/gs, ' ')
+      .replace(/\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/g, '$1')
+      .replace(/[\r\n]+/g, '\n')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    AppScriptLogger.info('After cleaning:', { cleaned });
+
+    const matches = cleaned.match(/https?:\/\/drive\.google\.com\/[^\s,;\)\]]+/gi) || [];
+    AppScriptLogger.info(`Found ${matches.length} URLs`, { matches });
+    
+    return matches
+      .map(url => url.replace(/[)\]]+$/, '').trim())
+      .filter(Boolean);
+  }
+
   /** Extracts the file ID from a Google Drive URL */
   static extractFileId(url: string): string {
-    const m = url.match(/[-\w]{25,}/);
+    const cleaned = String(url || '').trim();
+    const m = cleaned.match(/(?:\/d\/|[?&]id=)([-\w]{10,})/i) || cleaned.match(/[-\w]{10,}/);
     if (!m) throw new Error(`Invalid Google Drive URL: ${url}`);
-    return m[0];
+    return m[1] || m[0];
   }
   /** Retrieves the content of a file from its Google Drive URL */
   static getFileContentFromUrl(url: string): string {
@@ -355,10 +392,17 @@ class EmailBuilder {
   private getAttachments(): GoogleAppsScript.Base.Blob[] {
     if (!this.row.attachments_urls) return [];
     
+    AppScriptLogger.info('getAttachments() called', {
+      rawValue: this.row.attachments_urls,
+      type: typeof this.row.attachments_urls,
+      length: (this.row.attachments_urls || '').length
+    });
+
     const blobs: GoogleAppsScript.Base.Blob[] = [];
     let totalSize = 0;
-    // Split URLs by commas, semicolons, or newlines and trim whitespace
-    const urls = this.row.attachments_urls.split(/[,;\r\n]+/).map(s => s.trim()).filter(Boolean);
+    const urls = FileUtils.parseAttachmentUrls(this.row.attachments_urls);
+    
+    AppScriptLogger.info(`getAttachments: parsed ${urls.length} URLs from row`, { urls });
     
     for (const url of urls) {
       try {
@@ -396,7 +440,7 @@ class EmailBuilder {
   /** Moves attachments to trash after sending */
   private trashAttachments(): void {
     if (!this.row.attachments_urls) return;
-    for (const url of this.row.attachments_urls.split(/[,;\r\n]+/).map(s => s.trim()).filter(Boolean)) {
+    for (const url of FileUtils.parseAttachmentUrls(this.row.attachments_urls)) {
       try {
         FileUtils.trashFile(FileUtils.extractFileId(url));
       } catch { }
@@ -480,12 +524,31 @@ class EmailProcessor {
     // Process rows from bottom to top to avoid index shifting on deletions
     const data = this.source.getDataRange().getValues();
     const hMap = this.getHeaderMap();
+    AppScriptLogger.info('sendEmails() starting', {
+      totalRows: data.length,
+      headerMap: Object.entries(hMap).map(([k, v]) => `${k}:${v}`)
+    });
+    
     for (let i = data.length - 1; i >= 1; i--) {
       const row = data[i];
       if (row.every(c => !c)) continue;
+      
+      AppScriptLogger.info(`Processing row ${i + 1}`, {
+        rowData: row.map((v, idx) => ({
+          column: idx,
+          headerName: Object.entries(hMap).find(([_, idx_val]) => idx_val === idx)?.[0],
+          value: String(v).substring(0, 100),
+          type: typeof v
+        }))
+      });
+
       let emailRow: Record<string, any>;
       try {
         emailRow = SpreadsheetUtils.mapRowToObject(row, hMap) as Record<string, any>;
+        AppScriptLogger.info(`Row ${i + 1} mapped to object`, { 
+          attachments_urls: emailRow.attachments_urls 
+        });
+        
         // Apply template and write values back to spreadsheet
         const templateApplied = this.applyTemplateToRow(emailRow, i + 1, hMap);
         if (templateApplied) {
